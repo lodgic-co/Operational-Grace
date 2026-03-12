@@ -32,7 +32,7 @@ jobs:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           DATABASE_URL_DIRECT: ${{ secrets.DATABASE_URL_DIRECT }}
           PG_SSL: "false"
-        run: pnpm migrate
+        run: pnpm db:migrate
 
       - name: Trigger Render deploy
         run: curl --fail --show-error --silent -X POST "${{ secrets.RENDER_DEPLOY_HOOK_URL }}"
