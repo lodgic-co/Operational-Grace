@@ -1,7 +1,7 @@
 import { createRemoteJWKSet, jwtVerify, type JWTPayload } from 'jose';
 import type { FastifyRequest, FastifyReply } from 'fastify';
 import { config, allowedAzpSet } from '../config/index.js';
-import { Unauthenticated } from '../errors/index.js';
+import { AppError, Unauthenticated } from '../errors/index.js';
 
 const ALLOWED_ALGORITHMS = ['RS256'] as const;
 const CLOCK_TOLERANCE_SECONDS = 60;
@@ -59,7 +59,7 @@ export async function verifyServiceToken(
     request.token = payload as ServiceToken;
     request.callerServiceId = payload.azp as string;
   } catch (err) {
-    if (err instanceof Error && err.name === 'AppError') {
+    if (err instanceof AppError) {
       throw err;
     }
     request.log.warn({ error_code: 'unauthenticated' }, 'JWT verification failed');

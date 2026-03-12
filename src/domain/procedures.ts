@@ -64,13 +64,18 @@ export async function AssertPropertyPermission(
 interface ReservationRow {
   id: number;
   reservation_uuid: string;
-  created_at: Date;
+  created_at_iso: string;
 }
 
 /**
  * Retrieves paginated reservation rows for a property from the schema-specific pool.
  * Applies the limit+1 fetch rule. id is an internal field only — it must be
  * stripped by BuildPropertyReservationsResponse before public exposure.
+ *
+ * created_at is extracted as a full-precision ISO-8601 string (microseconds)
+ * via to_char() rather than as a JavaScript Date, which would truncate to
+ * milliseconds and cause cursor comparison drift when multiple rows share
+ * the same TIMESTAMPTZ value.
  */
 export async function SelectPropertyReservations(
   pool: Pool,
@@ -88,11 +93,12 @@ export async function SelectPropertyReservations(
   }
 
   const queryLimit = limit + 1;
+  const createdAtExpr = `to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`;
   let query: string;
   let params: unknown[];
 
   if (lastCreatedAt !== undefined && lastUuid !== undefined) {
-    query = `SELECT id, uuid AS reservation_uuid, created_at
+    query = `SELECT id, uuid AS reservation_uuid, ${createdAtExpr} AS created_at_iso
              FROM reservations
              WHERE property_uuid = $1::uuid
                AND (created_at, uuid) > ($3::timestamptz, $4::uuid)
@@ -100,7 +106,7 @@ export async function SelectPropertyReservations(
              LIMIT $2`;
     params = [propertyUuid, queryLimit, lastCreatedAt, lastUuid];
   } else {
-    query = `SELECT id, uuid AS reservation_uuid, created_at
+    query = `SELECT id, uuid AS reservation_uuid, ${createdAtExpr} AS created_at_iso
              FROM reservations
              WHERE property_uuid = $1::uuid
              ORDER BY created_at ASC, uuid ASC
@@ -115,7 +121,7 @@ export async function SelectPropertyReservations(
   if (reservations.length > limit) {
     reservations = reservations.slice(0, limit);
     const lastRow = reservations[reservations.length - 1];
-    next_cursor = encodeCursor(lastRow.created_at, lastRow.reservation_uuid);
+    next_cursor = encodeCursor(lastRow.created_at_iso, lastRow.reservation_uuid);
   }
 
   return { reservations, next_cursor };

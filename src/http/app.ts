@@ -54,8 +54,10 @@ export function createApp(opts: CreateAppOptions = {}) {
         { request_id: request.requestId, method: request.method, path: request.url },
         'incoming request',
       );
-      verifyInternalSecret(request, reply);
-      await verifyServiceToken(request, reply);
+      const internalAuthenticated = verifyInternalSecret(request, reply);
+      if (!internalAuthenticated) {
+        await verifyServiceToken(request, reply);
+      }
     }
   });
 

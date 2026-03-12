@@ -82,10 +82,10 @@ describe('AssertPropertyPermission', () => {
 });
 
 describe('BuildPropertyReservationsResponse', () => {
-  it('strips id and created_at, exposing only reservation_uuid', () => {
+  it('strips id and created_at_iso, exposing only reservation_uuid', () => {
     const rows = [
-      { id: 1, reservation_uuid: 'eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee', created_at: new Date() },
-      { id: 2, reservation_uuid: 'ffffffff-ffff-ffff-ffff-ffffffffffff', created_at: new Date() },
+      { id: 1, reservation_uuid: 'eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee', created_at_iso: '2026-03-12T00:00:00.000000Z' },
+      { id: 2, reservation_uuid: 'ffffffff-ffff-ffff-ffff-ffffffffffff', created_at_iso: '2026-03-12T00:00:00.000000Z' },
     ];
 
     const result = BuildPropertyReservationsResponse(rows, null);
@@ -94,9 +94,9 @@ describe('BuildPropertyReservationsResponse', () => {
     expect(result.reservations[0]).toStrictEqual({ reservation_uuid: 'eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee' });
     expect(result.reservations[1]).toStrictEqual({ reservation_uuid: 'ffffffff-ffff-ffff-ffff-ffffffffffff' });
     expect(result.next_cursor).toBeNull();
-    // id must not appear in public response
+    // id and created_at_iso must not appear in public response
     expect('id' in result.reservations[0]).toBe(false);
-    expect('created_at' in result.reservations[0]).toBe(false);
+    expect('created_at_iso' in result.reservations[0]).toBe(false);
   });
 
   it('passes through next_cursor', () => {

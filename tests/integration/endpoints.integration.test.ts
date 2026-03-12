@@ -204,6 +204,85 @@ describe('GET /live/properties/:property_uuid/reservations', () => {
     expect(res.body.reservations).toHaveLength(1);
     expect(typeof res.body.next_cursor).toBe('string');
   });
+
+  it('returns second page when next_cursor from page 1 is supplied (M24)', async () => {
+    const page1 = await request
+      .get(`/live/properties/${PROP_UUID}/reservations?limit=1`)
+      .set('X-Internal-Secret', INTERNAL_SECRET)
+      .set('X-Actor-Type', 'user')
+      .set('X-Actor-User-Uuid', ACTOR_UUID)
+      .set('X-Organisation-Uuid', ORG_UUID)
+      .set('X-Property-Uuid', PROP_UUID);
+
+    expect(page1.status).toBe(200);
+    const cursor = page1.body.next_cursor as string;
+    expect(typeof cursor).toBe('string');
+
+    const page2 = await request
+      .get(`/live/properties/${PROP_UUID}/reservations?limit=1&cursor=${encodeURIComponent(cursor)}`)
+      .set('X-Internal-Secret', INTERNAL_SECRET)
+      .set('X-Actor-Type', 'user')
+      .set('X-Actor-User-Uuid', ACTOR_UUID)
+      .set('X-Organisation-Uuid', ORG_UUID)
+      .set('X-Property-Uuid', PROP_UUID);
+
+    expect(page2.status).toBe(200);
+    expect(page2.body.reservations).toHaveLength(1);
+    expect(page2.body.reservations[0].reservation_uuid).not.toBe(
+      page1.body.reservations[0].reservation_uuid,
+    );
+  });
+
+  it('returns 400 invalid_cursor for a tampered cursor (M34)', async () => {
+    const res = await request
+      .get(`/live/properties/${PROP_UUID}/reservations?cursor=dGVzdA.invalidsignature`)
+      .set('X-Internal-Secret', INTERNAL_SECRET)
+      .set('X-Actor-Type', 'user')
+      .set('X-Actor-User-Uuid', ACTOR_UUID)
+      .set('X-Organisation-Uuid', ORG_UUID)
+      .set('X-Property-Uuid', PROP_UUID);
+
+    expect(res.status).toBe(400);
+    expectEnvelope(res.body, 400, 'invalid_cursor');
+  });
+
+  it('returns 400 invalid_cursor for a malformed cursor with no dot separator (M34)', async () => {
+    const res = await request
+      .get(`/live/properties/${PROP_UUID}/reservations?cursor=notacursoratall`)
+      .set('X-Internal-Secret', INTERNAL_SECRET)
+      .set('X-Actor-Type', 'user')
+      .set('X-Actor-User-Uuid', ACTOR_UUID)
+      .set('X-Organisation-Uuid', ORG_UUID)
+      .set('X-Property-Uuid', PROP_UUID);
+
+    expect(res.status).toBe(400);
+    expectEnvelope(res.body, 400, 'invalid_cursor');
+  });
+
+  it('returns 400 when X-Property-Uuid header is missing (M16)', async () => {
+    const res = await request
+      .get(`/live/properties/${PROP_UUID}/reservations`)
+      .set('X-Internal-Secret', INTERNAL_SECRET)
+      .set('X-Actor-Type', 'user')
+      .set('X-Actor-User-Uuid', ACTOR_UUID)
+      .set('X-Organisation-Uuid', ORG_UUID);
+
+    expect(res.status).toBe(400);
+    expectEnvelope(res.body, 400, 'invalid_request');
+  });
+
+  it('returns 400 when X-Property-Uuid does not match path property_uuid (M16)', async () => {
+    const res = await request
+      .get(`/live/properties/${PROP_UUID}/reservations`)
+      .set('X-Internal-Secret', INTERNAL_SECRET)
+      .set('X-Actor-Type', 'user')
+      .set('X-Actor-User-Uuid', ACTOR_UUID)
+      .set('X-Organisation-Uuid', ORG_UUID)
+      .set('X-Property-Uuid', PROP_UUID_2);
+
+    expect(res.status).toBe(400);
+    expectEnvelope(res.body, 400, 'invalid_request');
+  });
 });
 
 describe('GET /training/properties/:property_uuid/reservations', () => {

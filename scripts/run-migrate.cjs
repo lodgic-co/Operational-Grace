@@ -29,7 +29,7 @@ for (const { schema, table } of schemas) {
       '--schema', schema,
       '--create-schema',
     ],
-    { stdio: 'inherit' },
+    { stdio: 'inherit', env: { ...process.env, DATABASE_URL: databaseUrl } },
   );
 
   if (result.status !== 0) {

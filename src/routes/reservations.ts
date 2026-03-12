@@ -55,6 +55,14 @@ export async function reservationRoutes(
     }
 
     const { property_uuid } = paramsResult.data;
+
+    if (!actor.propertyUuid) {
+      throw InvalidRequest('X-Property-Uuid is required for property-scoped requests');
+    }
+    if (actor.propertyUuid !== property_uuid) {
+      throw InvalidRequest('X-Property-Uuid must match property_uuid path parameter');
+    }
+
     const limit = queryResult.data.limit ?? 50;
     const cursor = queryResult.data.cursor || undefined;
 
