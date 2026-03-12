@@ -1,0 +1,81 @@
+id: reservations
+entity_name: reservations
+owning_service: operational-grace
+persistence_object: operational_grace.reservations
+tenant_scope: property
+mutability: mutable
+primary_key: [id]
+foreign_keys: []
+unique_constraints:
+  - [uuid]
+indexes:
+  - name: reservations_uuid_idx
+    columns: [uuid]
+    unique: true
+  - name: reservations_property_created_uuid_idx
+    columns: [property_uuid, created_at, uuid]
+    order: [ASC, ASC, ASC]
+    purpose: >
+      Supports the primary pagination query:
+      WHERE property_uuid = $1 [AND (created_at, uuid) > ...]
+      ORDER BY created_at ASC, uuid ASC LIMIT n.
+      Composite index covers the filter, ordering, and cursor keyset
+      comparison in a single scan.
+fields:
+  - name: id
+    type: integer
+    nullable: false
+    generated: SERIAL
+    notes: Internal surrogate key. Never exposed in public responses.
+  - name: uuid
+    type: uuid
+    nullable: false
+    public_identifier: true
+    default: gen_random_uuid()
+    notes: Public-facing identifier for this reservation. Unique across the table.
+  - name: property_uuid
+    type: uuid
+    nullable: false
+    notes: >
+      Tenant scoping identifier. References the property this reservation
+      belongs to. Not a foreign key to a local properties table; property
+      identity is owned by considered-response. This value is the boundary
+      identifier supplied by the caller.
+  - name: created_at
+    type: timestamptz
+    nullable: false
+    default: NOW()
+    notes: >
+      Creation timestamp. Part of the composite pagination cursor key
+      (created_at, uuid). Retrieved as a full-precision ISO-8601 string via
+      to_char() to preserve microsecond precision for cursor encoding;
+      never truncated to JavaScript Date millisecond precision.
+  - name: updated_at
+    type: timestamptz
+    nullable: false
+    default: NOW()
+    notes: Maintained automatically by the set_updated_at trigger.
+triggers:
+  - name: set_reservations_updated_at
+    event: BEFORE UPDATE
+    for_each: ROW
+    function: set_updated_at()
+    purpose: Keeps updated_at current on every row mutation.
+defaults:
+  - uuid = gen_random_uuid()
+  - created_at = NOW()
+  - updated_at = NOW()
+notes:
+  - This table exists in both operational_grace and
+    operational_grace_training schemas with identical structure. Schema
+    selection is enforced by the database pool's search_path, set at
+    connection time in src/db/pool.ts; queries use unqualified table names.
+  - property_uuid carries tenant scope but has no local foreign key
+    constraint. Property validity and actor permission are enforced by
+    AssertPropertyPermission (via measured-judgement) before any read.
+  - The pagination cursor encodes (created_at_iso, reservation_uuid). The
+    composite index on (property_uuid, created_at, uuid) supports this
+    ordering without a separate sort step.
+  - id is never returned in any public API response. It is used only
+    internally within SelectPropertyReservations (stripped by
+    BuildPropertyReservationsResponse before the HTTP response is sent).

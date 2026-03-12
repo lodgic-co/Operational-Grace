@@ -1,0 +1,97 @@
+procedure_name: SelectPropertyReservations
+procedure_kind: domain
+identifier_mode: internal_only
+owning_service: operational-grace
+purpose: >
+  Select a page of reservation rows for a property using stable, opaque
+  cursor-based pagination ordered by (created_at, uuid). Returns internal
+  rows including id and created_at_iso; the id field is for internal use
+  only and must be stripped by BuildPropertyReservationsResponse before
+  public exposure.
+
+  created_at is retrieved as a full-precision ISO-8601 string (microseconds)
+  via to_char() rather than as a JavaScript Date object, which would truncate
+  to milliseconds and cause cursor comparison drift when multiple rows share
+  the same TIMESTAMPTZ value at the PostgreSQL level.
+source_files:
+  - src/domain/procedures.ts
+used_by:
+  - src/routes/reservations.ts
+caller_context: >
+  Called by reservationRoutes after AssertPropertyPermission succeeds.
+  Receives a pool already scoped to the correct environment schema via
+  ResolveEnvironmentSchema.
+inputs:
+  - pool (pg.Pool — schema-scoped pool for the requested environment,
+    selected by ResolveEnvironmentSchema)
+  - propertyUuid (string UUID — from path parameter, validated upstream)
+  - limit (integer, 1–200 — validated upstream; defaults to 50)
+  - cursor (optional opaque cursor string produced by encodeCursor)
+outputs:
+  - reservations (array of ReservationRow with fields id, reservation_uuid,
+    created_at_iso — id is internal only, stripped before public exposure)
+  - next_cursor (opaque cursor string or null)
+preconditions:
+  - pool must be connected and have search_path set to the correct environment
+    schema (operational_grace or operational_grace_training).
+  - propertyUuid must be a syntactically valid UUID.
+  - limit must be a positive integer no greater than 200.
+  - cursor, if present, must be a valid opaque cursor produced by encodeCursor
+    for this service (HMAC-verified in decodeCursor).
+decision_logic:
+  - If cursor is present, decode it via decodeCursor to extract lastCreatedAt
+    (full-precision ISO string) and lastUuid.
+  - Construct SQL selecting id, uuid AS reservation_uuid, and
+    to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')
+    AS created_at_iso from reservations WHERE property_uuid = $1.
+  - If cursor was decoded, add AND (created_at, uuid) > ($3::timestamptz,
+    $4::uuid) using lastCreatedAt and lastUuid.
+  - Always ORDER BY created_at ASC, uuid ASC.
+  - Fetch limit + 1 rows to detect whether another page exists (M24 limit+1
+    rule).
+  - If more than limit rows are returned, truncate to limit and compute
+    next_cursor by encoding the last row's (created_at_iso, reservation_uuid).
+  - If no extra row exists, set next_cursor to null.
+relationship_traversal:
+  - SELECT id, uuid, to_char(created_at ...) FROM reservations
+    WHERE property_uuid = $1::uuid
+    [AND (created_at, uuid) > ($3::timestamptz, $4::uuid)]
+    ORDER BY created_at ASC, uuid ASC
+    LIMIT limit+1.
+  - Constraining identifier is property_uuid (tenant scope enforced upstream by
+    AssertPropertyPermission; this procedure trusts the supplied propertyUuid).
+  - Pagination key is the composite (created_at, uuid) — both are indexed
+    together via reservations_property_created_uuid_idx.
+scoping_constraints:
+  - Tenant scope is property; all queries are constrained by property_uuid.
+  - Schema scope is environment; the pool's search_path constrains this
+    procedure to the correct environment schema without any per-query SET.
+set_semantics:
+  - Deterministic ordering by (created_at ASC, uuid ASC) ensures stable
+    pagination across pages.
+  - The cursor encodes (created_at_iso, reservation_uuid) — full-precision
+    timestamps prevent drift when multiple rows share the same TIMESTAMPTZ.
+cardinality_assumptions:
+  - (created_at, uuid) is unique within a property because uuid has a UNIQUE
+    INDEX. This makes the cursor ordering tuple sufficient to resume iteration
+    without gaps or duplicates.
+error_behaviour:
+  - invalid_cursor (400) — decodeCursor throws InvalidCursor if the cursor
+    HMAC signature does not verify or the payload is malformed. This
+    propagates to the HTTP boundary as 400 invalid_cursor.
+  - Database errors propagate as internal_error (500) at the HTTP boundary.
+data_dependencies:
+  - operational_grace.reservations (or operational_grace_training.reservations
+    depending on pool search_path)
+  - src/domain/cursor.ts — encodeCursor / decodeCursor helpers
+side_effects: >
+  None. This procedure is read-only and does not mutate database state.
+invariants:
+  - Internal numeric identifiers (id) are returned in the internal row shape
+    but must never appear in public HTTP responses; stripping is the
+    responsibility of BuildPropertyReservationsResponse.
+  - created_at_iso carries full microsecond precision to guarantee correct
+    cursor resumption.
+default_outcome: >
+  Returns up to limit reservation rows for the property and a next_cursor
+  when more results are available, or null when the page is terminal.

@@ -1,0 +1,91 @@
+procedure_name: AssertPropertyPermission
+procedure_kind: domain
+identifier_mode: boundary_resolving
+owning_service: operational-grace
+purpose: >
+  Assert that the actor holds the required permission for the given property
+  within the given organisation by delegating to measured-judgement.
+  Enforces result with non-leakage semantics: all access-denial conditions
+  (property not found, property outside organisation scope, actor not a
+  member, permission denied) are externally indistinguishable and all map
+  to 404 not_found.
+
+  Implements the domain-permission-enforcement pattern
+  (patterns/platform/domain-permission-enforcement.yaml) with property-level
+  scoping: the permission check passes property_uuids so that both
+  organisation-level and property-level role assignments are evaluated in a
+  single call to measured-judgement.
+source_files:
+  - src/domain/procedures.ts
+used_by:
+  - src/routes/reservations.ts
+caller_context: >
+  Called by reservationRoutes after delegated actor context is validated and
+  before SelectPropertyReservations is called. Must not be bypassed for any
+  authenticated, property-scoped resource.
+inputs:
+  - mjClient (MeasuredJudgementClient — injected at route registration)
+  - actorUserUuid (string UUID — resolved by polite-intervention and carried
+    in X-Actor-User-Uuid delegated actor header)
+  - organisationUuid (string UUID — from X-Organisation-Uuid delegated actor
+    header, validated upstream)
+  - propertyUuid (string UUID — from path parameter and X-Property-Uuid
+    header, validated upstream)
+  - permissionKey (string — currently always 'reservations.view')
+  - requestId (string, optional — correlation identifier for tracing)
+outputs:
+  - None on success; procedure throws on failure.
+preconditions:
+  - actorUserUuid, organisationUuid, and propertyUuid must be syntactically
+    valid UUIDs (enforced upstream at the HTTP boundary).
+  - propertyUuid must match the X-Property-Uuid header (enforced by the
+    route handler before calling this procedure).
+  - permissionKey must be a known permission catalogue key owned by
+    measured-judgement.
+decision_logic:
+  - Call mjClient.checkPermission(actorUserUuid, organisationUuid,
+    permissionKey, [propertyUuid], requestId).
+  - If the call succeeds and result.allowed is true, return successfully.
+  - If the call succeeds and result.allowed is false, throw NotFound() to
+    enforce non-leakage semantics.
+  - If the call throws an AppError, re-throw it unchanged (it carries a
+    structured error code from measured-judgement and must not be masked).
+  - If the call throws any other error (network failure, timeout, connection
+    refused), throw BadGateway('measured-judgement is unavailable').
+relationship_traversal:
+  - No local database traversal. This procedure is a pure delegation to
+    measured-judgement, which evaluates users, user_organisations,
+    role_assignments, role_permissions, and property_uuids scoping within its
+    own schema.
+scoping_constraints:
+  - Tenant scope is enforced by measured-judgement; the permission check is
+    constrained to organisationUuid and propertyUuid together.
+  - This procedure may only be called for authenticated user-actor requests.
+    Anonymous access is not permitted for reservation listing.
+set_semantics:
+  - property_uuids is passed as a single-element array containing propertyUuid.
+    Measured-judgement evaluates permission for this specific property within
+    the organisation.
+cardinality_assumptions:
+  - One actor, one organisation, one property, one permission key per call.
+error_behaviour:
+  - not_found (404) — measured-judgement returned allowed=false. Non-leakage
+    semantics; property not found, property outside organisation scope, actor
+    not a member, and permission denied are all externally indistinguishable.
+  - bad_gateway (502) — measured-judgement was unreachable or threw an
+    infrastructure error. Clients may retry; this is not a denial condition.
+  - AppErrors from measured-judgement are re-thrown without masking.
+data_dependencies:
+  - Depends on measured-judgement's permission evaluation data — users,
+    user_organisations, roles, role_permissions, role_assignments, and
+    property-level scoping within the measured_judgement schema.
+  - No local database access.
+side_effects: none
+invariants:
+  - Permission evaluation authority is exclusively measured-judgement. No
+    local permission evaluation occurs in this service.
+  - Non-leakage — all denial outcomes surface as 404 not_found without
+    revealing which specific condition failed.
+default_outcome: >
+  On success, returns normally; the calling route proceeds to data retrieval.
+  On denial: not_found (404). On infrastructure failure: bad_gateway (502).

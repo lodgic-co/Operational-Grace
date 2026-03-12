@@ -1,0 +1,64 @@
+procedure_name: ResolveEnvironmentSchema
+procedure_kind: domain
+identifier_mode: internal_only
+owning_service: operational-grace
+purpose: >
+  Select the correct database pool and return a typed environment literal for
+  the requested operating environment. Called at route registration time with
+  a hardcoded literal ('live' or 'training') — never parsed from a URL
+  segment at runtime. The two explicit routes (/live/... and /training/...)
+  make environment selection structural rather than conditional.
+
+  Implements the compile-time literal selection step of the
+  dual-schema-environment-isolation pattern
+  (patterns/platform/dual-schema-environment-isolation.yaml).
+source_files:
+  - src/domain/procedures.ts
+used_by:
+  - src/routes/reservations.ts
+caller_context: >
+  Called once per request from the reservationRoutes handler, immediately
+  after delegated actor context and permission assertion succeed.
+  The environment value is a TypeScript 'live' | 'training' literal bound
+  at route registration; it is never derived from request data.
+inputs:
+  - environment ('live' | 'training' — TypeScript literal, bound at registration)
+  - livePool (pg.Pool — pool with search_path = operational_grace)
+  - trainingPool (pg.Pool — pool with search_path = operational_grace_training)
+outputs:
+  - pool (pg.Pool — the selected pool for the environment)
+  - environment ('live' | 'training' — passed through for observability logging)
+preconditions:
+  - livePool and trainingPool are both initialised and connected before this
+    procedure is called.
+  - environment is always one of the two valid literals; no other value can
+    reach this procedure.
+decision_logic:
+  - If environment is 'live', return livePool with the 'live' environment literal.
+  - If environment is 'training', return trainingPool with the 'training' literal.
+  - No fallback branch; TypeScript exhaustiveness ensures only these two values
+    are possible.
+relationship_traversal:
+  - No database traversal. Pure in-memory selection based on the environment
+    literal.
+scoping_constraints:
+  - Schema isolation is a structural property of the pool; each pool's
+    connections have search_path set to the corresponding schema on connect,
+    so no query within this service can touch the wrong schema.
+set_semantics:
+  - Returns exactly one pool; no iteration or set membership logic.
+cardinality_assumptions:
+  - Exactly two pools exist — one per environment. There is no sharding within
+    an environment.
+error_behaviour:
+  - This procedure cannot throw; the environment literal is constrained by
+    TypeScript at compile time.
+data_dependencies:
+  - src/db/pool.ts — livePool and trainingPool instances.
+side_effects: none
+invariants:
+  - The returned pool's search_path is immutably bound to the correct schema;
+    no request can switch environments after this call.
+default_outcome: >
+  Returns the pool and environment literal for the caller's operating
+  environment. Always succeeds.

@@ -1,0 +1,58 @@
+procedure_name: BuildPropertyReservationsResponse
+procedure_kind: domain
+identifier_mode: internal_only
+owning_service: operational-grace
+purpose: >
+  Transform internal reservation rows and a raw cursor into the public
+  response shape for property reservations, enforcing non-leakage of
+  internal identifiers and internal timestamps.
+source_files:
+  - src/domain/procedures.ts
+used_by:
+  - src/routes/reservations.ts
+caller_context: >
+  Called by reservationRoutes immediately after SelectPropertyReservations,
+  before sending the HTTP response. This is the final shaping step; the
+  output is sent directly as the 200 response body.
+inputs:
+  - reservations (array of ReservationRow with fields id, reservation_uuid,
+    created_at_iso — id and created_at_iso are internal only)
+  - nextCursor (string or null — from SelectPropertyReservations)
+outputs:
+  - reservations (array of objects with reservation_uuid only — public shape)
+  - next_cursor (string or null — passed through unchanged)
+preconditions:
+  - reservations must come from SelectPropertyReservations or an equivalent
+    property-scoped query.
+decision_logic:
+  - Map each internal ReservationRow to a public object containing only
+    reservation_uuid.
+  - Discard internal numeric identifiers (id) and internal timestamps
+    (created_at_iso).
+  - Return the mapped reservations array and the supplied nextCursor as
+    next_cursor.
+relationship_traversal:
+  - No database traversal. Input is an in-memory array of ReservationRow
+    from SelectPropertyReservations. Step 1 — iterate over each row in order.
+    Step 2 — for each row, project only reservation_uuid; discard id and
+    created_at_iso. Step 3 — return mapped array and pass-through nextCursor.
+scoping_constraints:
+  - Tenant scope was already enforced upstream; this procedure does not apply
+    additional scoping.
+set_semantics:
+  - One output item is produced per input reservation row, in preserved order.
+cardinality_assumptions:
+  - Reservations array may be empty or up to the requested page size.
+error_behaviour:
+  - This is a pure transformation; it does not throw domain errors on its own.
+data_dependencies:
+  - Shape of ReservationRow as produced by SelectPropertyReservations.
+side_effects: >
+  None. This procedure is pure and does not perform I/O or mutation.
+invariants:
+  - Internal database identifiers (id) must never appear in the HTTP response.
+  - Internal timestamps (created_at_iso) must never appear in the HTTP
+    response; they are used only internally for cursor encoding.
+default_outcome: >
+  Returns a reservations array containing only reservation_uuid per item,
+  and the caller-provided next_cursor unchanged.

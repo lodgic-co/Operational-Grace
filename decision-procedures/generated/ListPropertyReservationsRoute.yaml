@@ -1,0 +1,125 @@
+procedure_name: ListPropertyReservationsRoute
+procedure_kind: route_orchestration
+identifier_mode: boundary_resolving
+owning_service: operational-grace
+purpose: >
+  HTTP route behaviour for GET /{env}/properties/:property_uuid/reservations,
+  validating input, enforcing delegated actor context and property-scoped
+  permission invariants, selecting the correct environment schema, and
+  returning cursor-paginated reservations.
+
+  The environment (live or training) is a TypeScript literal bound at route
+  registration time — not parsed at request time — per the
+  dual-schema-environment-isolation pattern
+  (patterns/platform/dual-schema-environment-isolation.yaml).
+source_files:
+  - src/routes/reservations.ts
+  - src/domain/procedures.ts
+used_by:
+  - src/http/app.ts (registered twice — once under /live prefix and once
+    under /training prefix)
+caller_context: >
+  Called by polite-intervention as the downstream domain authority for
+  property reservation listing. Polite-intervention resolves the actor
+  identity and routes to this service after calling
+  resolveOperationalGraceInstance to obtain the base URL.
+inputs:
+  - property_uuid (path parameter — UUID)
+  - limit (query parameter, optional, integer 1–200, default 50)
+  - cursor (query parameter, optional opaque cursor string)
+  - environment ('live' | 'training' — TypeScript literal bound at
+    registration; not a request input)
+  - X-Actor-User-Uuid (delegated actor header — resolved actor UUID)
+  - X-Organisation-Uuid (delegated actor header — organisation UUID)
+  - X-Property-Uuid (delegated actor header — must match path property_uuid)
+  - X-Request-Id (delegated request correlation header, optional)
+outputs:
+  - reservations (array of { reservation_uuid: string })
+  - next_cursor (opaque cursor string or null)
+preconditions:
+  - property_uuid must be a syntactically valid UUID.
+  - limit must be a positive integer no greater than 200.
+  - Delegated actor headers X-Actor-User-Uuid, X-Organisation-Uuid, and
+    X-Property-Uuid must all be present.
+  - X-Property-Uuid must match the property_uuid path parameter exactly.
+decision_logic:
+  - Validate property_uuid via Zod paramsSchema; on failure, throw
+    InvalidRequest.
+  - Validate limit and cursor via Zod querySchema; on failure, throw
+    InvalidRequest.
+  - Parse delegated actor from request headers via parseDelegatedActor; if
+    actor is null, throw InvalidRequest.
+  - If actor.propertyUuid is absent, throw InvalidRequest
+    ('X-Property-Uuid is required for property-scoped requests').
+  - If actor.propertyUuid does not equal property_uuid, throw InvalidRequest
+    ('X-Property-Uuid must match property_uuid path parameter').
+  - Set request.actorUserUuid, request.organisationUuid, request.propertyUuid,
+    and request.environment for observability logging.
+  - Call ResolveEnvironmentSchema(environment, livePool, trainingPool) to
+    obtain the environment-scoped pool.
+  - Call AssertPropertyPermission(mjClient, actorUserUuid, organisationUuid,
+    propertyUuid, 'reservations.view', requestId).
+  - Call SelectPropertyReservations(pool, propertyUuid, limit, cursor).
+  - Call BuildPropertyReservationsResponse(reservations, next_cursor).
+  - Return 200 with the response body.
+relationship_traversal:
+  - Route validates property_uuid (path), limit and cursor (query); parses
+    delegated actor headers. Constraining identifiers are propertyUuid,
+    actorUserUuid, and organisationUuid.
+  - ResolveEnvironmentSchema — selects pool by environment literal. No DB
+    access.
+  - AssertPropertyPermission — delegates to measured-judgement
+    checkPermission(actorUserUuid, organisationUuid, 'reservations.view',
+    [propertyUuid]). All denial outcomes surface as 404 not_found.
+  - SelectPropertyReservations — reservations WHERE property_uuid = propertyUuid
+    [AND (created_at, uuid) > cursor] ORDER BY created_at ASC, uuid ASC
+    LIMIT limit+1. Pool search_path constrains to the correct environment
+    schema. Returns id, reservation_uuid, created_at_iso internally.
+  - BuildPropertyReservationsResponse — maps rows to objects with only
+    reservation_uuid; discards id and created_at_iso. Returns next_cursor
+    unchanged.
+scoping_constraints:
+  - Tenant scope is property; all reads are constrained by propertyUuid.
+  - Environment scope is the selected schema (operational_grace or
+    operational_grace_training); the pool's search_path enforces this
+    unconditionally.
+  - Anonymous access is not permitted; a valid delegated actor context with
+    actorUserUuid is required.
+set_semantics:
+  - Cursor-based pagination over the ordered (created_at, uuid) sequence.
+  - Responses include at most limit reservations and a next_cursor when more
+    results exist.
+cardinality_assumptions:
+  - Delegated actor headers uniquely identify the actor when present.
+  - Permission evaluation is delegated to measured-judgement; this service
+    holds no local permission state.
+error_behaviour:
+  - invalid_request (400) — boundary validation failures (invalid UUID, limit
+    out of range, missing or mismatched X-Property-Uuid) or missing actor
+    headers.
+  - invalid_cursor (400) — cursor HMAC verification failed or payload is
+    malformed; raised inside decodeCursor during SelectPropertyReservations.
+  - not_found (404) — AssertPropertyPermission returned a denial (non-leakage;
+    all denial conditions are indistinguishable externally).
+  - bad_gateway (502) — measured-judgement was unreachable during permission
+    check.
+  - internal_error (500) — unexpected database error during
+    SelectPropertyReservations.
+data_dependencies:
+  - Delegated to underlying procedures and their data dependencies.
+side_effects: >
+  None beyond standard structured logging (including environment, actorUserUuid,
+  organisationUuid, propertyUuid) and OpenTelemetry tracing. This route is
+  read-only.
+invariants:
+  - Internal numeric identifiers (id) are never returned; only reservation_uuid
+    appears in responses.
+  - created_at is never returned in public responses.
+  - Non-leakage behaviour for permission and membership failures is enforced
+    by AssertPropertyPermission.
+  - Environment isolation is unconditional; the pool's search_path cannot be
+    overridden at request time.
+default_outcome: >
+  On success, returns a page of property reservations with only public fields
+  and a next_cursor or null. On failure, returns a normalised error envelope
+  with the appropriate error code.
