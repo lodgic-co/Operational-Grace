@@ -16,9 +16,10 @@ export function registerRequestId(app: FastifyInstance): void {
 
   app.addHook('onRequest', async (request: FastifyRequest) => {
     const incoming = request.headers['x-request-id'];
-    const id = typeof incoming === 'string' && incoming.trim().length > 0
-      ? incoming.trim()
-      : randomUUID();
+    const id =
+      typeof incoming === 'string' && incoming.trim().length > 0
+        ? incoming.trim()
+        : (getActiveTraceId() ?? randomUUID());
     request.requestId = id;
 
     const span = trace.getSpan(context.active());
@@ -71,7 +72,7 @@ export function registerErrorHandler(app: FastifyInstance): void {
         code: 'internal_error',
         message: 'Internal server error',
         request_id: reqId,
-        retryable: true,
+        retryable: false,
       },
     });
   });

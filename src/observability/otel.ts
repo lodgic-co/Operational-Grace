@@ -1,3 +1,4 @@
+import { trace } from '@opentelemetry/api';
 import { NodeSDK } from '@opentelemetry/sdk-node';
 import { getNodeAutoInstrumentations } from '@opentelemetry/auto-instrumentations-node';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
@@ -56,5 +57,24 @@ export function initOtel(): void {
 export async function shutdownOtel(): Promise<void> {
   if (sdk) {
     await sdk.shutdown();
+  }
+}
+
+export function verifyTelemetry(endpoint: string | undefined): void {
+  if (!endpoint) {
+    return;
+  }
+
+  const tracer = trace.getTracer('startup-verify');
+  const span = tracer.startSpan('otel-startup-check');
+  const { traceId } = span.spanContext();
+  span.end();
+
+  const isNoOp = !traceId || traceId === '00000000000000000000000000000000';
+  if (isNoOp) {
+    throw new Error(
+      'FATAL: OTEL_EXPORTER_OTLP_ENDPOINT is configured but OpenTelemetry SDK is not active. ' +
+        'Ensure the service starts with: node --import ./dist/observability/otel-preload.js dist/index.js',
+    );
   }
 }

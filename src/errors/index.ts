@@ -68,5 +68,5 @@ export function BadGateway(message: string = 'Upstream service unavailable'): Ap
 }
 
 export function InternalError(message: string = 'Internal server error'): AppError {
-  return new AppError({ status: 500, code: 'internal_error', message, retryable: true });
+  return new AppError({ status: 500, code: 'internal_error', message, retryable: false });
 }
