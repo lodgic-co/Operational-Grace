@@ -1,9 +1,11 @@
 import { config, emitDeprecationWarnings } from './config/index.js';
-import { shutdownOtel } from './observability/otel.js';
+import { shutdownOtel, verifyTelemetry } from './observability/otel.js';
 import { createApp } from './http/app.js';
 import { setReady, setDbPools } from './routes/health.js';
 import { livePool, trainingPool, closePools } from './db/pool.js';
 import { createMeasuredJudgementClient } from './http/measured-judgement-client.js';
+
+verifyTelemetry(config.OTEL_EXPORTER_OTLP_ENDPOINT);
 
 const mjClient = createMeasuredJudgementClient(config.MEASURED_JUDGEMENT_BASE_URL);
 const app = createApp({ mjClient, livePool, trainingPool });
