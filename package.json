@@ -9,6 +9,7 @@
     "start": "node --import ./dist/observability/otel-preload.js dist/index.js",
     "check": "tsc",
     "db:migrate": "node scripts/run-migrate.cjs",
+    "db:seed:dev": "node scripts/run-seed-dev.cjs",
     "db:create-migration": "node-pg-migrate create --migrations-dir db/migrations",
     "test": "vitest run",
     "test:watch": "vitest",
