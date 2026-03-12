@@ -1,1 +1,0 @@
-{"version":3,"file":"get-api-filename.js","sourceRoot":"","sources":["../../../../src/commands/join/helpers/get-api-filename.ts"],"names":[],"mappings":"AAAA,OAAO,KAAK,IAAI,MAAM,WAAW,CAAC;AAElC,MAAM,UAAU,cAAc,CAAC,QAAgB;IAC7C,OAAO,IAAI,CAAC,QAAQ,CAAC,QAAQ,EAAE,IAAI,CAAC,OAAO,CAAC,QAAQ,CAAC,CAAC,CAAC;AACzD,CAAC"}

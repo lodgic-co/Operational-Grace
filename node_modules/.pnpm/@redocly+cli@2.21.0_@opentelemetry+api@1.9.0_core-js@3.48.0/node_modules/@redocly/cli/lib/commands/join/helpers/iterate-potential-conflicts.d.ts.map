@@ -1,1 +1,0 @@
-{"version":3,"file":"iterate-potential-conflicts.d.ts","sourceRoot":"","sources":["../../../../src/commands/join/helpers/iterate-potential-conflicts.ts"],"names":[],"mappings":"AA0BA,wBAAgB,yBAAyB,CAAC,EACxC,kBAAkB,EAClB,iBAAiB,GAClB,EAAE;IACD,kBAAkB,EAAE,GAAG,CAAC;IACxB,iBAAiB,CAAC,EAAE,OAAO,CAAC;CAC7B,UA8BA"}

@@ -1,1 +1,0 @@
-{"version":3,"file":"add-prefix.js","sourceRoot":"","sources":["../../../../src/commands/join/helpers/add-prefix.ts"],"names":[],"mappings":"AAAA,MAAM,UAAU,SAAS,CAAC,GAAW,EAAE,UAAkB;IACvD,OAAO,UAAU,CAAC,CAAC,CAAC,UAAU,GAAG,GAAG,GAAG,GAAG,CAAC,CAAC,CAAC,GAAG,CAAC;AACnD,CAAC"}

@@ -1,1 +1,0 @@
-{"version":3,"file":"collect-external-docs.d.ts","sourceRoot":"","sources":["../../../../src/commands/join/helpers/collect-external-docs.ts"],"names":[],"mappings":"AAIA,OAAO,KAAK,EAAE,iBAAiB,EAAE,mBAAmB,EAAE,MAAM,aAAa,CAAC;AAE1E,wBAAgB,mBAAmB,CAAC,EAClC,SAAS,EACT,OAAO,EACP,OAAO,GACR,EAAE;IACD,SAAS,EAAE,GAAG,CAAC;IACf,OAAO,EAAE,iBAAiB,CAAC;IAC3B,OAAO,EAAE,mBAAmB,CAAC;CAC9B,QAUA"}
