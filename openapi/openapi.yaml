@@ -1,0 +1,252 @@
+openapi: "3.0.3"
+info:
+  title: Operational Grace API
+  version: "1.0.0"
+  description: >
+    Internal domain service API. Owns the reservations and guests domains.
+    Exposes property-scoped reservation listing with live/training environment
+    isolation via dual database schemas. Not publicly accessible — called only
+    by polite-intervention. Permission enforcement delegated to measured-judgement.
+
+servers:
+  - url: /
+
+security:
+  - BearerAuth: []
+
+paths:
+  /health/live:
+    get:
+      operationId: healthLive
+      x-auth-mode: none
+      x-tenant-scope: none
+      x-public-surface: false
+      x-error-envelope: not_applicable
+      summary: Liveness probe
+      tags: [Health]
+      security: []
+      responses:
+        "200":
+          description: Service process is running
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties:
+                  status:
+                    type: string
+                    enum: [ok]
+
+  /health/ready:
+    get:
+      operationId: healthReady
+      x-auth-mode: none
+      x-tenant-scope: none
+      x-public-surface: false
+      x-error-envelope: not_applicable
+      summary: Readiness probe
+      description: >
+        Returns ready when both live and training database schema connections
+        are healthy. Returns 503 if either pool is unreachable.
+      tags: [Health]
+      security: []
+      responses:
+        "200":
+          description: Service is ready
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties:
+                  status:
+                    type: string
+                    enum: [ready]
+        "503":
+          description: Service not ready
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties:
+                  status:
+                    type: string
+                    enum: [not_ready]
+
+  /live/properties/{property_uuid}/reservations:
+    get:
+      operationId: listLivePropertyReservations
+      x-auth-mode: bearer
+      x-tenant-scope: property
+      x-public-surface: false
+      x-error-envelope: components/errors.yaml#/components/schemas/ErrorEnvelope
+      summary: List live reservations for a property
+      description: >
+        Returns a paginated list of reservation UUIDs for the specified property
+        from the live (operational) schema. Actor must hold reservations.view
+        for the property. All denial conditions (property not found, out of
+        scope, no permission) return 404 to prevent information leakage.
+      tags: [Reservations]
+      parameters:
+        - $ref: "#/components/parameters/PropertyUuid"
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/ActorType"
+        - $ref: "#/components/parameters/ActorUserUuid"
+        - $ref: "#/components/parameters/OrganisationUuid"
+        - $ref: "#/components/parameters/PropertyUuidHeader"
+        - $ref: "#/components/parameters/RequestId"
+      responses:
+        "200":
+          $ref: "#/components/responses/ReservationListResponse"
+        "400":
+          $ref: "components/errors.yaml#/components/responses/BadRequest"
+        "401":
+          $ref: "components/errors.yaml#/components/responses/Unauthenticated"
+        "404":
+          $ref: "components/errors.yaml#/components/responses/NotFound"
+        "502":
+          $ref: "components/errors.yaml#/components/responses/BadGateway"
+        "500":
+          $ref: "components/errors.yaml#/components/responses/InternalError"
+
+  /training/properties/{property_uuid}/reservations:
+    get:
+      operationId: listTrainingPropertyReservations
+      x-auth-mode: bearer
+      x-tenant-scope: property
+      x-public-surface: false
+      x-error-envelope: components/errors.yaml#/components/schemas/ErrorEnvelope
+      summary: List training reservations for a property
+      description: >
+        Returns a paginated list of reservation UUIDs for the specified property
+        from the training schema. Identical behaviour to the live endpoint;
+        data is fully isolated between schemas.
+      tags: [Reservations]
+      parameters:
+        - $ref: "#/components/parameters/PropertyUuid"
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/ActorType"
+        - $ref: "#/components/parameters/ActorUserUuid"
+        - $ref: "#/components/parameters/OrganisationUuid"
+        - $ref: "#/components/parameters/PropertyUuidHeader"
+        - $ref: "#/components/parameters/RequestId"
+      responses:
+        "200":
+          $ref: "#/components/responses/ReservationListResponse"
+        "400":
+          $ref: "components/errors.yaml#/components/responses/BadRequest"
+        "401":
+          $ref: "components/errors.yaml#/components/responses/Unauthenticated"
+        "404":
+          $ref: "components/errors.yaml#/components/responses/NotFound"
+        "502":
+          $ref: "components/errors.yaml#/components/responses/BadGateway"
+        "500":
+          $ref: "components/errors.yaml#/components/responses/InternalError"
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    PropertyUuid:
+      name: property_uuid
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: UUID of the property to list reservations for
+
+    Cursor:
+      name: cursor
+      in: query
+      required: false
+      schema:
+        type: string
+      description: Opaque HMAC-signed pagination cursor from a previous response
+
+    Limit:
+      name: limit
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 200
+        default: 50
+      description: Maximum number of results to return
+
+    ActorType:
+      name: X-Actor-Type
+      in: header
+      required: true
+      schema:
+        type: string
+        enum: [user]
+      description: Delegated actor type forwarded by polite-intervention
+
+    ActorUserUuid:
+      name: X-Actor-User-Uuid
+      in: header
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Delegated actor user UUID forwarded by polite-intervention
+
+    OrganisationUuid:
+      name: X-Organisation-Uuid
+      in: header
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Organisation UUID forwarded by polite-intervention
+
+    PropertyUuidHeader:
+      name: X-Property-Uuid
+      in: header
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Property UUID forwarded by polite-intervention (canonical delegated context header)
+
+    RequestId:
+      name: X-Request-Id
+      in: header
+      required: false
+      schema:
+        type: string
+      description: Correlation ID for distributed tracing
+
+  responses:
+    ReservationListResponse:
+      description: Paginated list of reservation UUIDs
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [reservations, next_cursor]
+            properties:
+              reservations:
+                type: array
+                items:
+                  type: object
+                  required: [reservation_uuid]
+                  properties:
+                    reservation_uuid:
+                      type: string
+                      format: uuid
+              next_cursor:
+                type: string
+                nullable: true
+                description: Opaque cursor for the next page; null if no further results

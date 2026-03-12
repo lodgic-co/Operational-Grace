@@ -1,0 +1,12 @@
+import { DEFAULT_FETCH_TIMEOUT, OTEL_URL } from './constants.js';
+import fetchWithTimeout from './fetch-with-timeout.js';
+export async function respondWithinMs(timeout = DEFAULT_FETCH_TIMEOUT) {
+    try {
+        await fetchWithTimeout(OTEL_URL, { timeout });
+        return true;
+    }
+    catch (error) {
+        return false;
+    }
+}
+//# sourceMappingURL=network-check.js.map

@@ -1,0 +1,1 @@
+{"version":3,"file":"populate-tags.d.ts","sourceRoot":"","sources":["../../../../src/commands/join/helpers/populate-tags.ts"],"names":[],"mappings":"AAEA,OAAO,KAAK,EAAE,mBAAmB,EAAE,MAAM,aAAa,CAAC;AAOvD,wBAAgB,YAAY,CAAC,EAC3B,SAAS,EACT,iBAAiB,EACjB,OAAO,GACR,EAAE;IACD,SAAS,EAAE,GAAG,CAAC;IACf,iBAAiB,EAAE,OAAO,GAAG,SAAS,CAAC;IACvC,OAAO,EAAE,mBAAmB,CAAC;CAC9B,QAsEA"}

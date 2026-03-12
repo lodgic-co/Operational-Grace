@@ -1,0 +1,80 @@
+components:
+  schemas:
+    ErrorObject:
+      type: object
+      required:
+        - status
+        - code
+        - message
+        - request_id
+        - retryable
+      properties:
+        status:
+          type: integer
+          description: HTTP status code
+          example: 400
+        code:
+          type: string
+          description: Machine-readable error code
+          example: invalid_request
+        message:
+          type: string
+          description: Human-readable error description
+          example: "property_uuid must be a valid UUID"
+        message_params:
+          type: object
+          additionalProperties: true
+          description: Optional structured parameters for the error message
+        request_id:
+          type: string
+          format: uuid
+          description: Correlation ID for the request
+          example: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+        retryable:
+          type: boolean
+          description: Whether the client should retry the request
+          example: false
+
+    ErrorEnvelope:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          $ref: "#/components/schemas/ErrorObject"
+
+  responses:
+    BadRequest:
+      description: Invalid request parameters or body
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+
+    Unauthenticated:
+      description: Missing or invalid service token
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+
+    NotFound:
+      description: Resource not found (or access denied — non-leakage)
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+
+    BadGateway:
+      description: Upstream service unavailable
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+
+    InternalError:
+      description: Unexpected server error
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
