@@ -6,11 +6,11 @@ import type { MeasuredJudgementClient } from '../../src/http/measured-judgement-
 
 const INTERNAL_SECRET = process.env['INTERNAL_SERVICE_SECRET'] ?? 'test-internal-secret';
 
-const PROP_UUID = '11111111-1111-1111-1111-111111111111';
-const PROP_UUID_2 = '22222222-2222-2222-2222-222222222222';
-const ACTOR_UUID = '33333333-3333-3333-3333-333333333333';
-const ORG_UUID = '44444444-4444-4444-4444-444444444444';
-const UNKNOWN_PROP_UUID = 'ffffffff-ffff-ffff-ffff-ffffffffffff';
+const PROP_UUID = '11111111-1111-4111-a111-111111111111';
+const PROP_UUID_2 = '22222222-2222-4222-a222-222222222222';
+const ACTOR_UUID = '33333333-3333-4333-a333-333333333333';
+const ORG_UUID = '44444444-4444-4444-a444-444444444444';
+const UNKNOWN_PROP_UUID = 'ffffffff-ffff-4fff-afff-ffffffffffff';
 
 let app: FastifyInstance;
 let request: ReturnType<typeof supertest>;
@@ -35,9 +35,9 @@ async function seedReservations(pool: pg.Pool, schema: string): Promise<void> {
   await pool.query(`
     INSERT INTO reservations (uuid, property_uuid)
     VALUES
-      ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', $1::uuid),
-      ('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', $1::uuid),
-      ('cccccccc-cccc-cccc-cccc-cccccccccccc', $2::uuid)
+      ('aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa', $1::uuid),
+      ('bbbbbbbb-bbbb-4bbb-abbb-bbbbbbbbbbbb', $1::uuid),
+      ('cccccccc-cccc-4ccc-accc-cccccccccccc', $2::uuid)
     ON CONFLICT (uuid) DO NOTHING
   `, [PROP_UUID, PROP_UUID_2]);
 }
@@ -323,7 +323,7 @@ describe('GET /training/properties/:property_uuid/reservations', () => {
 // schema at a time; verify the other schema returns zero rows for that UUID.
 
 describe('live/training schema isolation (M37 cross-contamination)', () => {
-  const ISOLATION_PROP = 'eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee';
+  const ISOLATION_PROP = 'eeeeeeee-eeee-4eee-aeee-eeeeeeeeeeee';
   const ISOLATION_UUID_A = 'a0a0a0a0-a0a0-a0a0-a0a0-a0a0a0a0a0a0';
   const ISOLATION_UUID_B = 'b0b0b0b0-b0b0-b0b0-b0b0-b0b0b0b0b0b0';
 

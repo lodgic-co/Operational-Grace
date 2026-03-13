@@ -8,10 +8,10 @@ import {
 import type { MeasuredJudgementClient } from '../../src/http/measured-judgement-client.js';
 import { AppError } from '../../src/errors/index.js';
 
-const ACTOR_UUID = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
-const ORG_UUID = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb';
-const PROP_UUID = 'cccccccc-cccc-cccc-cccc-cccccccccccc';
-const REQUEST_ID = 'dddddddd-dddd-dddd-dddd-dddddddddddd';
+const ACTOR_UUID = 'aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa';
+const ORG_UUID = 'bbbbbbbb-bbbb-4bbb-abbb-bbbbbbbbbbbb';
+const PROP_UUID = 'cccccccc-cccc-4ccc-accc-cccccccccccc';
+const REQUEST_ID = 'dddddddd-dddd-4ddd-addd-dddddddddddd';
 
 const mockLivePool = {} as Pool;
 const mockTrainingPool = {} as Pool;
@@ -84,15 +84,15 @@ describe('AssertPropertyPermission', () => {
 describe('BuildPropertyReservationsResponse', () => {
   it('strips id and created_at_iso, exposing only reservation_uuid', () => {
     const rows = [
-      { id: 1, reservation_uuid: 'eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee', created_at_iso: '2026-03-12T00:00:00.000000Z' },
-      { id: 2, reservation_uuid: 'ffffffff-ffff-ffff-ffff-ffffffffffff', created_at_iso: '2026-03-12T00:00:00.000000Z' },
+      { id: 1, reservation_uuid: 'eeeeeeee-eeee-4eee-aeee-eeeeeeeeeeee', created_at_iso: '2026-03-12T00:00:00.000000Z' },
+      { id: 2, reservation_uuid: 'ffffffff-ffff-4fff-afff-ffffffffffff', created_at_iso: '2026-03-12T00:00:00.000000Z' },
     ];
 
     const result = BuildPropertyReservationsResponse(rows, null);
 
     expect(result.reservations).toHaveLength(2);
-    expect(result.reservations[0]).toStrictEqual({ reservation_uuid: 'eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee' });
-    expect(result.reservations[1]).toStrictEqual({ reservation_uuid: 'ffffffff-ffff-ffff-ffff-ffffffffffff' });
+    expect(result.reservations[0]).toStrictEqual({ reservation_uuid: 'eeeeeeee-eeee-4eee-aeee-eeeeeeeeeeee' });
+    expect(result.reservations[1]).toStrictEqual({ reservation_uuid: 'ffffffff-ffff-4fff-afff-ffffffffffff' });
     expect(result.next_cursor).toBeNull();
     // id and created_at_iso must not appear in public response
     expect('id' in result.reservations[0]).toBe(false);
