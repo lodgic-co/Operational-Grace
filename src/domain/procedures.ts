@@ -8,16 +8,27 @@ import type { MeasuredJudgementClient } from '../http/measured-judgement-client.
  * Called by each route handler with a hardcoded environment literal —
  * not parsed from a URL segment at runtime. The two explicit routes
  * (/live/... and /training/...) make the environment structural.
+ *
+ * The exhaustiveness guard (never branch) ensures that if the
+ * 'live' | 'training' union is ever extended, the compiler will flag
+ * this function as needing an update before the code compiles.
+ * See: I15-impl-environment-literal-must-not-be-derived-from-request.yaml
  */
 export function ResolveEnvironmentSchema(
   environment: 'live' | 'training',
   livePool: Pool,
   trainingPool: Pool,
 ): { pool: Pool; environment: 'live' | 'training' } {
-  return {
-    pool: environment === 'live' ? livePool : trainingPool,
-    environment,
-  };
+  if (environment === 'live') {
+    return { pool: livePool, environment };
+  }
+  if (environment === 'training') {
+    return { pool: trainingPool, environment };
+  }
+  // TypeScript makes this branch unreachable. If the union is extended in the
+  // future without updating this function, the compiler will error here.
+  const _exhaustive: never = environment;
+  throw new Error(`ResolveEnvironmentSchema: unhandled environment '${String(_exhaustive)}'`);
 }
 
 /**

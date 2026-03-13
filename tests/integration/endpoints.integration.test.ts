@@ -312,3 +312,107 @@ describe('GET /training/properties/:property_uuid/reservations', () => {
     expect(res.status).toBe(404);
   });
 });
+
+// --- Schema cross-contamination tests (M37) ---
+//
+// These tests prove that live and training schemas are genuinely isolated.
+// They must fail if the pools are swapped, if search_path is not set, or
+// if a query accidentally targets the wrong schema.
+//
+// Strategy: use a dedicated property UUID that is seeded into exactly one
+// schema at a time; verify the other schema returns zero rows for that UUID.
+
+describe('live/training schema isolation (M37 cross-contamination)', () => {
+  const ISOLATION_PROP = 'eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee';
+  const ISOLATION_UUID_A = 'a0a0a0a0-a0a0-a0a0-a0a0-a0a0a0a0a0a0';
+  const ISOLATION_UUID_B = 'b0b0b0b0-b0b0-b0b0-b0b0-b0b0b0b0b0b0';
+
+  async function clearIsolationProp(pool: pg.Pool, schema: string): Promise<void> {
+    await pool.query(
+      `DELETE FROM ${schema}.reservations WHERE property_uuid = $1::uuid`,
+      [ISOLATION_PROP],
+    );
+  }
+
+  async function seedIsolationProp(pool: pg.Pool, schema: string, uuid: string): Promise<void> {
+    await pool.query(
+      `INSERT INTO ${schema}.reservations (uuid, property_uuid)
+       VALUES ($1::uuid, $2::uuid)
+       ON CONFLICT (uuid) DO NOTHING`,
+      [uuid, ISOLATION_PROP],
+    );
+  }
+
+  function reservationRequest(env: 'live' | 'training') {
+    return request
+      .get(`/${env}/properties/${ISOLATION_PROP}/reservations`)
+      .set('X-Internal-Secret', INTERNAL_SECRET)
+      .set('X-Actor-Type', 'user')
+      .set('X-Actor-User-Uuid', ACTOR_UUID)
+      .set('X-Organisation-Uuid', ORG_UUID)
+      .set('X-Property-Uuid', ISOLATION_PROP);
+  }
+
+  beforeEach(async () => {
+    await clearIsolationProp(livePool, LIVE_SCHEMA);
+    await clearIsolationProp(trainingPool, TRAINING_SCHEMA);
+  });
+
+  afterAll(async () => {
+    await clearIsolationProp(livePool, LIVE_SCHEMA);
+    await clearIsolationProp(trainingPool, TRAINING_SCHEMA);
+  });
+
+  it('live-only seed: /live returns the row, /training returns zero rows', async () => {
+    await seedIsolationProp(livePool, LIVE_SCHEMA, ISOLATION_UUID_A);
+
+    const liveRes = await reservationRequest('live');
+    expect(liveRes.status).toBe(200);
+    const liveUuids = (liveRes.body.reservations as Array<{ reservation_uuid: string }>)
+      .map((r) => r.reservation_uuid);
+    expect(liveUuids).toContain(ISOLATION_UUID_A);
+
+    const trainingRes = await reservationRequest('training');
+    expect(trainingRes.status).toBe(200);
+    const trainingUuids = (trainingRes.body.reservations as Array<{ reservation_uuid: string }>)
+      .map((r) => r.reservation_uuid);
+    expect(trainingUuids).not.toContain(ISOLATION_UUID_A);
+    expect(trainingUuids).toHaveLength(0);
+  });
+
+  it('training-only seed: /training returns the row, /live returns zero rows', async () => {
+    await seedIsolationProp(trainingPool, TRAINING_SCHEMA, ISOLATION_UUID_B);
+
+    const trainingRes = await reservationRequest('training');
+    expect(trainingRes.status).toBe(200);
+    const trainingUuids = (trainingRes.body.reservations as Array<{ reservation_uuid: string }>)
+      .map((r) => r.reservation_uuid);
+    expect(trainingUuids).toContain(ISOLATION_UUID_B);
+
+    const liveRes = await reservationRequest('live');
+    expect(liveRes.status).toBe(200);
+    const liveUuids = (liveRes.body.reservations as Array<{ reservation_uuid: string }>)
+      .map((r) => r.reservation_uuid);
+    expect(liveUuids).not.toContain(ISOLATION_UUID_B);
+    expect(liveUuids).toHaveLength(0);
+  });
+
+  it('both schemas seeded independently: each route sees only its own rows', async () => {
+    await seedIsolationProp(livePool, LIVE_SCHEMA, ISOLATION_UUID_A);
+    await seedIsolationProp(trainingPool, TRAINING_SCHEMA, ISOLATION_UUID_B);
+
+    const liveRes = await reservationRequest('live');
+    expect(liveRes.status).toBe(200);
+    const liveUuids = (liveRes.body.reservations as Array<{ reservation_uuid: string }>)
+      .map((r) => r.reservation_uuid);
+    expect(liveUuids).toContain(ISOLATION_UUID_A);
+    expect(liveUuids).not.toContain(ISOLATION_UUID_B);
+
+    const trainingRes = await reservationRequest('training');
+    expect(trainingRes.status).toBe(200);
+    const trainingUuids = (trainingRes.body.reservations as Array<{ reservation_uuid: string }>)
+      .map((r) => r.reservation_uuid);
+    expect(trainingUuids).toContain(ISOLATION_UUID_B);
+    expect(trainingUuids).not.toContain(ISOLATION_UUID_A);
+  });
+});

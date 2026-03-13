@@ -10,12 +10,12 @@ import { registerRequestId, registerCorrelationHeader, registerErrorHandler } fr
 import type { MeasuredJudgementClient } from './measured-judgement-client.js';
 
 export interface CreateAppOptions {
-  mjClient?: MeasuredJudgementClient;
-  livePool?: Pool;
-  trainingPool?: Pool;
+  mjClient: MeasuredJudgementClient;
+  livePool: Pool;
+  trainingPool: Pool;
 }
 
-export function createApp(opts: CreateAppOptions = {}) {
+export function createApp(opts: CreateAppOptions) {
   const app = Fastify({ logger: loggerOptions, disableRequestLogging: true });
 
   registerRequestId(app);
@@ -25,18 +25,24 @@ export function createApp(opts: CreateAppOptions = {}) {
   app.register(healthRoutes);
   app.register(internalRoutes);
 
-  if (opts.livePool && opts.trainingPool && opts.mjClient) {
-    const { livePool, trainingPool, mjClient } = opts;
-
-    app.register(
-      (f) => reservationRoutes(f, { environment: 'live', livePool, trainingPool, mjClient }),
-      { prefix: '/live' },
-    );
-    app.register(
-      (f) => reservationRoutes(f, { environment: 'training', livePool, trainingPool, mjClient }),
-      { prefix: '/training' },
+  if (!opts.livePool || !opts.trainingPool || !opts.mjClient) {
+    throw new Error(
+      'operational-grace: livePool, trainingPool, and mjClient are all required. ' +
+      'Reservation routes cannot be registered without all three. ' +
+      'Check environment configuration and ensure both database schema pools are initialised.',
     );
   }
+
+  const { livePool, trainingPool, mjClient } = opts;
+
+  app.register(
+    (f) => reservationRoutes(f, { environment: 'live', livePool, trainingPool, mjClient }),
+    { prefix: '/live' },
+  );
+  app.register(
+    (f) => reservationRoutes(f, { environment: 'training', livePool, trainingPool, mjClient }),
+    { prefix: '/training' },
+  );
 
   app.decorateRequest('startTime', BigInt(0));
   app.decorateRequest('callerServiceId', '');

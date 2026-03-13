@@ -20,11 +20,25 @@ export const livePool = new Pool(poolBase);
 export const trainingPool = new Pool(poolBase);
 
 livePool.on('connect', (client) => {
-  void client.query(`SET search_path TO ${LIVE_SCHEMA}`);
+  client.query(`SET search_path TO ${LIVE_SCHEMA}`).catch((err: unknown) => {
+    // A connection that failed to set search_path would silently query the
+    // wrong schema. Log and terminate rather than continuing in an unsafe state.
+    console.error(
+      `[operational-grace] FATAL: failed to SET search_path TO ${LIVE_SCHEMA} on live pool connection:`,
+      err,
+    );
+    process.exit(1);
+  });
 });
 
 trainingPool.on('connect', (client) => {
-  void client.query(`SET search_path TO ${TRAINING_SCHEMA}`);
+  client.query(`SET search_path TO ${TRAINING_SCHEMA}`).catch((err: unknown) => {
+    console.error(
+      `[operational-grace] FATAL: failed to SET search_path TO ${TRAINING_SCHEMA} on training pool connection:`,
+      err,
+    );
+    process.exit(1);
+  });
 });
 
 export async function closePools(): Promise<void> {
