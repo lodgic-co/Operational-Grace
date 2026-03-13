@@ -16,17 +16,16 @@ import { resolve } from 'node:path';
 
 const SPEC_PATH = resolve('openapi/openapi.yaml');
 
-// Matches top-level path entries under the `paths:` section.
-// OpenAPI 3.x paths are indented with exactly 2 spaces at the root level.
-const PATH_ENTRY_RE = /^  (\/[^\s:#{}]+(?:\{[^}]+\}[^\s:#{}]*)*(?:\/[^\s:#{}]*(?:\{[^}]+\}[^\s:#{}]*)*)*):/gm;
+// Matches top-level path entries in the spec.
+// OpenAPI 3.x paths are indented with exactly 2 spaces and start with '/'.
+// Using the full spec content is safe: only path keys start with 2 spaces + '/'.
+const PATH_ENTRY_RE = /^ {2}(\/[^\s:#{}]+(?:\{[^}]+\}[^\s:#{}]*)*(?:\/[^\s:#{}]*(?:\{[^}]+\}[^\s:#{}]*)*)*):/gm;
 
 function extractPaths(specContent: string): string[] {
   const paths: string[] = [];
   let match: RegExpExecArray | null;
-  // Scope extraction to the paths: section only.
-  const pathsSection = specContent.match(/^paths:\n([\s\S]*?)(?=^\w|\Z)/m)?.[0] ?? specContent;
   const re = new RegExp(PATH_ENTRY_RE.source, PATH_ENTRY_RE.flags);
-  while ((match = re.exec(pathsSection)) !== null) {
+  while ((match = re.exec(specContent)) !== null) {
     paths.push(match[1]);
   }
   return paths;
