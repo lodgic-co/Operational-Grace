@@ -1,5 +1,6 @@
 import { trace, context, type Span } from '@opentelemetry/api';
 import { config } from '../config/index.js';
+import { BadGateway, GatewayTimeout } from '../errors/index.js';
 
 const REQUEST_TIMEOUT_MS = 5000;
 const MAX_RETRIES = 2;
@@ -52,9 +53,6 @@ function doFetch(
   options: Omit<RequestInit, 'signal'>,
   inboundSpan?: Span | null,
 ): Promise<Response> {
-  const controller = new AbortController();
-  setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
-
   // Rebuild propagation context from the stored inbound span immediately before
   // dispatch. context.with ensures the correct parent span is active only during
   // this outbound call, guarding against ambient async context drift caused by
@@ -64,7 +62,7 @@ function doFetch(
     : context.active();
 
   return context.with(ctx, () =>
-    fetch(url, { ...options, signal: controller.signal }),
+    fetch(url, { ...options, signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) }),
   );
 }
 
@@ -78,9 +76,12 @@ async function fetchWithRetry(
   try {
     response = await doFetch(url, options, inboundSpan);
   } catch (err) {
-    if (attempt < MAX_RETRIES && (err as Error).name === 'AbortError') {
-      await sleep(BASE_DELAY_MS * Math.pow(2, attempt) + jitter());
-      return fetchWithRetry(url, options, inboundSpan, attempt + 1);
+    if ((err as Error).name === 'TimeoutError') {
+      if (attempt < MAX_RETRIES) {
+        await sleep(BASE_DELAY_MS * Math.pow(2, attempt) + jitter());
+        return fetchWithRetry(url, options, inboundSpan, attempt + 1);
+      }
+      throw GatewayTimeout('measured-judgement request timed out');
     }
     throw err;
   }
@@ -153,8 +154,7 @@ export function createMeasuredJudgementClient(baseUrl: string): MeasuredJudgemen
     );
 
     if (!response.ok) {
-      const text = await response.text().catch(() => '');
-      throw new Error(`measured-judgement permission check failed: ${response.status} ${text}`);
+      throw BadGateway(`measured-judgement permission check failed: ${response.status}`);
     }
 
     const data = (await response.json()) as { allowed: boolean };

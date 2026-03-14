@@ -67,6 +67,10 @@ export function BadGateway(message: string = 'Upstream service unavailable'): Ap
   return new AppError({ status: 502, code: 'bad_gateway', message, retryable: true });
 }
 
+export function GatewayTimeout(message: string = 'Upstream service timed out'): AppError {
+  return new AppError({ status: 504, code: 'gateway_timeout', message, retryable: true });
+}
+
 export function InternalError(message: string = 'Internal server error'): AppError {
   return new AppError({ status: 500, code: 'internal_error', message, retryable: false });
 }

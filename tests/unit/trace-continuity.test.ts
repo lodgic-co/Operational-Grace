@@ -88,6 +88,32 @@ describe('MJ client trace context propagation', () => {
     expect(capturedCtx).toBe(activeCtx);
   });
 
+  it('throws GatewayTimeout (504) after exhausting retries on TimeoutError', async () => {
+    global.fetch = vi.fn().mockImplementation((url: string) => {
+      if (url.includes('/oauth/token')) {
+        return Promise.resolve(
+          new Response(JSON.stringify({ access_token: 'test-m2m-token', expires_in: 3600 }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          }),
+        );
+      }
+      return Promise.reject(new DOMException('The operation timed out.', 'TimeoutError'));
+    });
+
+    const { createMeasuredJudgementClient } = await import(
+      '../../src/http/measured-judgement-client.js'
+    );
+    const { AppError } = await import('../../src/errors/index.js');
+    const client = createMeasuredJudgementClient('http://mj.internal');
+
+    await expect(
+      client.checkPermission(ACTOR_UUID, ORG_UUID, 'reservations.view', [PROP_UUID], REQUEST_ID, null),
+    ).rejects.toSatisfy((err: unknown) => {
+      return err instanceof AppError && err.status === 504 && err.code === 'gateway_timeout';
+    });
+  });
+
   it('inboundSpan is threaded from AssertPropertyPermission to checkPermission', async () => {
     const mockSpan = {
       spanContext: () => ({
