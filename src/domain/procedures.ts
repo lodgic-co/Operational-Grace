@@ -1,4 +1,5 @@
 import type { Pool } from 'pg';
+import type { Span } from '@opentelemetry/api';
 import { encodeCursor, decodeCursor } from './cursor.js';
 import { AppError, NotFound, BadGateway } from '../errors/index.js';
 import type { MeasuredJudgementClient } from '../http/measured-judgement-client.js';
@@ -51,6 +52,7 @@ export async function AssertPropertyPermission(
   propertyUuid: string,
   permissionKey: string,
   requestId?: string,
+  inboundSpan?: Span | null,
 ): Promise<void> {
   let result: { allowed: boolean };
   try {
@@ -60,6 +62,7 @@ export async function AssertPropertyPermission(
       permissionKey,
       [propertyUuid],
       requestId,
+      inboundSpan,
     );
   } catch (err) {
     if (err instanceof AppError) {
