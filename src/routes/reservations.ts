@@ -80,6 +80,7 @@ export async function reservationRoutes(
       property_uuid,
       'reservations.view',
       request.requestId,
+      request.inboundSpan,
     );
 
     const { reservations, next_cursor } = await SelectPropertyReservations(

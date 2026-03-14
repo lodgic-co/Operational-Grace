@@ -1,3 +1,4 @@
+import { trace, context, type Span } from '@opentelemetry/api';
 import { config } from '../config/index.js';
 
 const REQUEST_TIMEOUT_MS = 5000;
@@ -46,30 +47,47 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function fetchWithRetry(
+function doFetch(
   url: string,
-  options: RequestInit,
-  attempt = 0,
+  options: Omit<RequestInit, 'signal'>,
+  inboundSpan?: Span | null,
 ): Promise<Response> {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
+  // Rebuild propagation context from the stored inbound span immediately before
+  // dispatch. context.with ensures the correct parent span is active only during
+  // this outbound call, guarding against ambient async context drift caused by
+  // earlier async work such as token acquisition.
+  const ctx = inboundSpan
+    ? trace.setSpan(context.active(), inboundSpan)
+    : context.active();
+
+  return context.with(ctx, () =>
+    fetch(url, { ...options, signal: controller.signal }),
+  );
+}
+
+async function fetchWithRetry(
+  url: string,
+  options: Omit<RequestInit, 'signal'>,
+  inboundSpan?: Span | null,
+  attempt = 0,
+): Promise<Response> {
   let response: Response;
   try {
-    response = await fetch(url, { ...options, signal: controller.signal });
+    response = await doFetch(url, options, inboundSpan);
   } catch (err) {
-    clearTimeout(timeout);
     if (attempt < MAX_RETRIES && (err as Error).name === 'AbortError') {
       await sleep(BASE_DELAY_MS * Math.pow(2, attempt) + jitter());
-      return fetchWithRetry(url, options, attempt + 1);
+      return fetchWithRetry(url, options, inboundSpan, attempt + 1);
     }
     throw err;
   }
-  clearTimeout(timeout);
 
   if (response.status >= 500 && attempt < MAX_RETRIES) {
     await sleep(BASE_DELAY_MS * Math.pow(2, attempt) + jitter());
-    return fetchWithRetry(url, options, attempt + 1);
+    return fetchWithRetry(url, options, inboundSpan, attempt + 1);
   }
 
   return response;
@@ -101,6 +119,7 @@ export interface MeasuredJudgementClient {
     permissionKey: string,
     propertyUuids?: string[],
     requestId?: string,
+    inboundSpan?: Span | null,
   ): Promise<{ allowed: boolean }>;
 }
 
@@ -111,6 +130,7 @@ export function createMeasuredJudgementClient(baseUrl: string): MeasuredJudgemen
     permissionKey: string,
     propertyUuids?: string[],
     requestId?: string,
+    inboundSpan?: Span | null,
   ): Promise<{ allowed: boolean }> {
     const body: Record<string, unknown> = {
       actor_user_uuid: actorUserUuid,
@@ -122,11 +142,15 @@ export function createMeasuredJudgementClient(baseUrl: string): MeasuredJudgemen
       body.property_uuids = propertyUuids;
     }
 
-    const response = await fetchWithRetry(`${baseUrl}/permissions/check`, {
-      method: 'POST',
-      headers: await buildHeaders(requestId),
-      body: JSON.stringify(body),
-    });
+    const response = await fetchWithRetry(
+      `${baseUrl}/permissions/check`,
+      {
+        method: 'POST',
+        headers: await buildHeaders(requestId),
+        body: JSON.stringify(body),
+      },
+      inboundSpan,
+    );
 
     if (!response.ok) {
       const text = await response.text().catch(() => '');

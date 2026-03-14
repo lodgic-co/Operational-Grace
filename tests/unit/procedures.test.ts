@@ -46,6 +46,7 @@ describe('AssertPropertyPermission', () => {
       'reservations.view',
       [PROP_UUID],
       REQUEST_ID,
+      undefined,
     );
   });
 

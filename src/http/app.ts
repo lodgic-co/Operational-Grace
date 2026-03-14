@@ -1,5 +1,7 @@
 import Fastify from 'fastify';
 import type { Pool } from 'pg';
+import { trace } from '@opentelemetry/api';
+import type { Span } from '@opentelemetry/api';
 import { loggerOptions } from '../observability/logger.js';
 import { healthRoutes } from '../routes/health.js';
 import { internalRoutes } from '../routes/internal.js';
@@ -8,6 +10,12 @@ import { verifyInternalSecret } from '../auth/verify-internal-secret.js';
 import { verifyServiceToken } from '../auth/verify-token.js';
 import { registerRequestId, registerCorrelationHeader, registerErrorHandler } from './error-handler.js';
 import type { MeasuredJudgementClient } from './measured-judgement-client.js';
+
+declare module 'fastify' {
+  interface FastifyRequest {
+    inboundSpan: Span | null;
+  }
+}
 
 export interface CreateAppOptions {
   mjClient: MeasuredJudgementClient;
@@ -45,6 +53,7 @@ export function createApp(opts: CreateAppOptions) {
   );
 
   app.decorateRequest('startTime', BigInt(0));
+  app.decorateRequest('inboundSpan', null);
   app.decorateRequest('callerServiceId', '');
   app.decorateRequest('errorCode', undefined);
   app.decorateRequest('actorUserUuid', undefined);
@@ -54,6 +63,7 @@ export function createApp(opts: CreateAppOptions) {
 
   app.addHook('onRequest', async (request, reply) => {
     request.startTime = process.hrtime.bigint();
+    request.inboundSpan = trace.getActiveSpan() ?? null;
 
     if (!request.url.startsWith('/health')) {
       request.log.info(
