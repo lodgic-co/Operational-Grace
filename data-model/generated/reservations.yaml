@@ -8,6 +8,9 @@ primary_key: [id]
 foreign_keys: []
 unique_constraints:
   - [uuid]
+table_constraints:
+  - name: reservations_check_out_after_check_in
+    definition: CHECK (check_out > check_in)
 indexes:
   - name: reservations_uuid_idx
     columns: [uuid]
@@ -48,6 +51,20 @@ fields:
       Name of the guest for this reservation. Added in migration
       202603120001_add-guest-name-to-reservations. Backfilled to empty
       string on existing rows at migration time, then set NOT NULL.
+  - name: check_in
+    type: date
+    nullable: false
+    notes: >
+      Overall reservation arrival date. Start of the booking envelope.
+      Inclusive. Added in migration 202603160104. Must be strictly before
+      check_out (enforced by CHECK constraint). Date semantics: start inclusive,
+      end exclusive throughout.
+  - name: check_out
+    type: date
+    nullable: false
+    notes: >
+      Overall reservation departure date. End of the booking envelope.
+      Exclusive. Must be strictly after check_in.
   - name: created_at
     type: timestamptz
     nullable: false
@@ -86,3 +103,8 @@ notes:
   - id is never returned in any public API response. It is used only
     internally within SelectPropertyReservations (stripped by
     BuildPropertyReservationsResponse before the HTTP response is sent).
+  - check_in/check_out represent the overall guest-facing arrival/departure
+    envelope for the reservation. They are distinct from reservation_stay
+    start_date/end_date, which represent the nights assigned to a specific
+    accommodation allocation segment. Stays must lie within this envelope
+    but do not need to be contiguous.

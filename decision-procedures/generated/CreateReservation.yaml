@@ -25,20 +25,24 @@ inputs:
   - reservationUuid (string UUID — client-supplied idempotence key)
   - propertyUuid (string UUID — tenant scoping identifier)
   - guestName (string — guest name for the reservation, non-empty)
+  - checkIn (string ISO date YYYY-MM-DD — reservation booking envelope start)
+  - checkOut (string ISO date YYYY-MM-DD — reservation booking envelope end)
 outputs:
   - reservation (CreatedReservationRow — id, uuid, property_uuid, guest_name,
-    created_at)
+    check_in, check_out, created_at)
   - was_existing (boolean — true if ON CONFLICT fired, false if new row)
 preconditions:
   - A transaction must be active on trx.
   - reservationUuid must be a syntactically valid UUID.
   - guestName must be a non-empty string (enforced upstream).
+  - checkOut must be strictly greater than checkIn (enforced upstream).
 decision_logic:
-  - INSERT INTO reservations (uuid, property_uuid, guest_name) VALUES
-    ($1::uuid, $2::uuid, $3) ON CONFLICT (uuid) DO NOTHING.
+  - INSERT INTO reservations (uuid, property_uuid, guest_name, check_in,
+    check_out) VALUES ($1::uuid, $2::uuid, $3, $4::date, $5::date)
+    ON CONFLICT (uuid) DO NOTHING.
   - was_existing = (insertResult.rowCount ?? 0) === 0.
-  - SELECT id, uuid, property_uuid, guest_name, created_at FROM reservations
-    WHERE uuid = $1::uuid.
+  - SELECT id, uuid, property_uuid, guest_name, check_in::text, check_out::text,
+    created_at FROM reservations WHERE uuid = $1::uuid.
   - Return { reservation, was_existing }.
 relationship_traversal:
   - INSERT into reservations with ON CONFLICT (uuid) DO NOTHING.

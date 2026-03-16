@@ -401,7 +401,7 @@ components:
   schemas:
     CreateReservationBody:
       type: object
-      required: [reservation_uuid, guest_name, stays]
+      required: [reservation_uuid, guest_name, check_in, check_out, stays]
       properties:
         reservation_uuid:
           type: string
@@ -410,12 +410,29 @@ components:
         guest_name:
           type: string
           minLength: 1
+        check_in:
+          type: string
+          format: date
+          description: >
+            Reservation arrival date. Start of the overall booking envelope. Inclusive.
+            Must be strictly before check_out.
+        check_out:
+          type: string
+          format: date
+          description: >
+            Reservation departure date. End of the overall booking envelope. Exclusive.
+            Must be strictly after check_in.
         stays:
           type: array
           minItems: 1
+          description: >
+            Allocation segments for this reservation. Each stay records the nights
+            assigned to a particular accommodation option type. Stays do not need to
+            be contiguous but all stay ranges must lie within the reservation
+            check_in/check_out envelope.
           items:
             type: object
-            required: [accommodation_option_type_uuid, check_in, check_out]
+            required: [accommodation_option_type_uuid, start_date, end_date]
             properties:
               accommodation_option_type_uuid:
                 type: string
@@ -424,12 +441,17 @@ components:
                 type: string
                 format: uuid
                 nullable: true
-              check_in:
+                description: >
+                  Optional allocation to a concrete sellable option. Null means the
+                  stay is unallocated.
+              start_date:
                 type: string
                 format: date
-              check_out:
+                description: Start of this stay segment. Inclusive. Must be >= reservation check_in.
+              end_date:
                 type: string
                 format: date
+                description: End of this stay segment. Exclusive. Must be <= reservation check_out.
 
     CreateHoldBody:
       type: object
@@ -485,14 +507,57 @@ components:
         application/json:
           schema:
             type: object
-            required: [reservation_uuid, was_existing]
+            required: [reservation, stays, was_existing]
             properties:
-              reservation_uuid:
-                type: string
-                format: uuid
               was_existing:
                 type: boolean
                 description: True if the reservation already existed (idempotent replay).
+              reservation:
+                type: object
+                required: [uuid, property_uuid, guest_name, check_in, check_out, created_at]
+                properties:
+                  uuid:
+                    type: string
+                    format: uuid
+                  property_uuid:
+                    type: string
+                    format: uuid
+                  guest_name:
+                    type: string
+                  check_in:
+                    type: string
+                    format: date
+                  check_out:
+                    type: string
+                    format: date
+                  created_at:
+                    type: string
+                    format: date-time
+              stays:
+                type: array
+                items:
+                  type: object
+                  required: [uuid, accommodation_option_type_uuid, start_date, end_date, created_at]
+                  properties:
+                    uuid:
+                      type: string
+                      format: uuid
+                    accommodation_option_type_uuid:
+                      type: string
+                      format: uuid
+                    accommodation_option_uuid:
+                      type: string
+                      format: uuid
+                      nullable: true
+                    start_date:
+                      type: string
+                      format: date
+                    end_date:
+                      type: string
+                      format: date
+                    created_at:
+                      type: string
+                      format: date-time
 
     HoldCreatedResponse:
       description: Hold created

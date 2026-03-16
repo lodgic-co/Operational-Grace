@@ -14,6 +14,8 @@ export interface CreatedReservationRow {
   uuid: string;
   property_uuid: string;
   guest_name: string;
+  check_in: string;
+  check_out: string;
   created_at: string;
 }
 
@@ -22,8 +24,8 @@ export interface StayRow {
   reservation_id: number;
   accommodation_option_type_uuid: string;
   accommodation_option_uuid: string | null;
-  check_in: string;
-  check_out: string;
+  start_date: string;
+  end_date: string;
   created_at: string;
 }
 
@@ -40,18 +42,21 @@ export async function CreateReservation(
   reservationUuid: string,
   propertyUuid: string,
   guestName: string,
+  checkIn: string,
+  checkOut: string,
 ): Promise<{ reservation: CreatedReservationRow; was_existing: boolean }> {
   const insertResult = await trx.query(
-    `INSERT INTO reservations (uuid, property_uuid, guest_name)
-     VALUES ($1::uuid, $2::uuid, $3)
+    `INSERT INTO reservations (uuid, property_uuid, guest_name, check_in, check_out)
+     VALUES ($1::uuid, $2::uuid, $3, $4::date, $5::date)
      ON CONFLICT (uuid) DO NOTHING`,
-    [reservationUuid, propertyUuid, guestName],
+    [reservationUuid, propertyUuid, guestName, checkIn, checkOut],
   );
 
   const was_existing = (insertResult.rowCount ?? 0) === 0;
 
   const result = await trx.query(
     `SELECT id, uuid, property_uuid, guest_name,
+            check_in::text, check_out::text,
             to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS created_at
      FROM reservations
      WHERE uuid = $1::uuid`,
@@ -73,22 +78,22 @@ export async function CreateReservationStay(
   reservationId: number,
   accommodationOptionTypeUuid: string,
   accommodationOptionUuid: string | null,
-  checkIn: string,
-  checkOut: string,
+  startDate: string,
+  endDate: string,
 ): Promise<StayRow> {
   const result = await trx.query(
     `INSERT INTO reservation_stays
-       (reservation_id, accommodation_option_type_uuid, accommodation_option_uuid, check_in, check_out)
+       (reservation_id, accommodation_option_type_uuid, accommodation_option_uuid, start_date, end_date)
      VALUES ($1, $2::uuid, $3, $4::date, $5::date)
      RETURNING
        uuid,
        reservation_id,
        accommodation_option_type_uuid,
        accommodation_option_uuid,
-       check_in::text,
-       check_out::text,
+       start_date::text,
+       end_date::text,
        to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS created_at`,
-    [reservationId, accommodationOptionTypeUuid, accommodationOptionUuid ?? null, checkIn, checkOut],
+    [reservationId, accommodationOptionTypeUuid, accommodationOptionUuid ?? null, startDate, endDate],
   );
   return result.rows[0] as StayRow;
 }
@@ -96,12 +101,20 @@ export async function CreateReservationStay(
 export interface StayInput {
   accommodation_option_type_uuid: string;
   accommodation_option_uuid?: string | null;
-  check_in: string;
-  check_out: string;
+  start_date: string;
+  end_date: string;
 }
 
 export interface CreateReservationResult {
-  reservation: { uuid: string; property_uuid: string; guest_name: string; created_at: string };
+  was_existing: boolean;
+  reservation: {
+    uuid: string;
+    property_uuid: string;
+    guest_name: string;
+    check_in: string;
+    check_out: string;
+    created_at: string;
+  };
   stays: StayRow[];
 }
 
@@ -125,15 +138,27 @@ export async function CreateReservationWithStays(
   reservationUuid: string,
   propertyUuid: string,
   guestName: string,
+  checkIn: string,
+  checkOut: string,
   stays: StayInput[],
 ): Promise<CreateReservationResult> {
   if (stays.length === 0) {
     throw InvalidRequest('A reservation must contain at least one stay');
   }
 
+  if (checkOut <= checkIn) {
+    throw InvalidRequest('reservation check_out must be greater than check_in');
+  }
+
   for (const stay of stays) {
-    if (stay.check_out <= stay.check_in) {
-      throw InvalidRequest('check_out must be greater than check_in for all stays');
+    if (stay.end_date <= stay.start_date) {
+      throw InvalidRequest('stay end_date must be greater than start_date');
+    }
+    if (stay.start_date < checkIn) {
+      throw InvalidRequest('stay start_date must not be before reservation check_in');
+    }
+    if (stay.end_date > checkOut) {
+      throw InvalidRequest('stay end_date must not be after reservation check_out');
     }
   }
 
@@ -143,14 +168,21 @@ export async function CreateReservationWithStays(
   try {
     await trx.query('BEGIN');
 
-    const { reservation, was_existing } = await CreateReservation(trx, reservationUuid, propertyUuid, guestName);
+    const { reservation, was_existing } = await CreateReservation(
+      trx,
+      reservationUuid,
+      propertyUuid,
+      guestName,
+      checkIn,
+      checkOut,
+    );
 
     let stayRows: StayRow[];
 
     if (was_existing) {
       const existing = await trx.query(
         `SELECT uuid, reservation_id, accommodation_option_type_uuid, accommodation_option_uuid,
-                check_in::text, check_out::text,
+                start_date::text, end_date::text,
                 to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS created_at
          FROM reservation_stays
          WHERE reservation_id = $1`,
@@ -165,8 +197,8 @@ export async function CreateReservationWithStays(
           reservation.id,
           stay.accommodation_option_type_uuid,
           stay.accommodation_option_uuid ?? null,
-          stay.check_in,
-          stay.check_out,
+          stay.start_date,
+          stay.end_date,
         );
         stayRows.push(stayRow);
       }
@@ -175,10 +207,13 @@ export async function CreateReservationWithStays(
     await trx.query('COMMIT');
 
     return {
+      was_existing,
       reservation: {
         uuid: reservation.uuid,
         property_uuid: reservation.property_uuid,
         guest_name: reservation.guest_name,
+        check_in: reservation.check_in,
+        check_out: reservation.check_out,
         created_at: reservation.created_at,
       },
       stays: stayRows,

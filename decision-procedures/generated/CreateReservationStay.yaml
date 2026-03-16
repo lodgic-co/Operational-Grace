@@ -25,19 +25,22 @@ inputs:
     considered-response; no local FK constraint per I16)
   - accommodationOptionUuid (string UUID | null — optional concrete option
     allocation; null means unallocated)
-  - checkIn (string ISO date YYYY-MM-DD)
-  - checkOut (string ISO date YYYY-MM-DD — must be > checkIn, validated
-    upstream by CreateReservationWithStays)
+  - startDate (string ISO date YYYY-MM-DD — stay segment start, inclusive;
+    must be >= reservation check_in, validated upstream)
+  - endDate (string ISO date YYYY-MM-DD — stay segment end, exclusive;
+    must be > startDate and <= reservation check_out, validated upstream)
 outputs:
   - StayRow (uuid, reservation_id, accommodation_option_type_uuid,
-    accommodation_option_uuid, check_in, check_out, created_at)
+    accommodation_option_uuid, start_date, end_date, created_at)
 preconditions:
   - A transaction must be active on trx.
   - reservationId must be the internal primary key of an existing reservation.
-  - checkOut must be strictly greater than checkIn (enforced upstream).
+  - endDate must be strictly greater than startDate (enforced upstream).
+  - startDate >= reservation.check_in and endDate <= reservation.check_out
+    (enforced upstream by CreateReservationWithStays).
 decision_logic:
   - INSERT INTO reservation_stays (reservation_id, accommodation_option_type_uuid,
-    accommodation_option_uuid, check_in, check_out) VALUES ($1, $2::uuid, $3,
+    accommodation_option_uuid, start_date, end_date) VALUES ($1, $2::uuid, $3,
     $4::date, $5::date) RETURNING all fields including server-generated uuid
     and created_at.
   - Return the RETURNING row as StayRow.

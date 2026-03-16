@@ -14,8 +14,8 @@ unique_constraints:
   - [uuid]
     name: reservation_stays_uuid_key
 table_constraints:
-  - name: reservation_stays_check_out_after_check_in
-    definition: CHECK (check_out > check_in)
+  - name: reservation_stays_end_date_after_start_date
+    definition: CHECK (end_date > start_date)
 indexes:
   - name: reservation_stays_uuid_idx
     columns: [uuid]
@@ -54,14 +54,21 @@ fields:
       Optional cross-service reference to a concrete sellable option in
       considered-response. NULL means the stay is not yet allocated to a
       specific option. No local FK constraint per I16.
-  - name: check_in
+  - name: start_date
     type: date
     nullable: false
-  - name: check_out
+    notes: >
+      Start of this stay segment. Inclusive. Must be >= reservation.check_in.
+      Renamed from check_in in migration 202603160105. Date semantics: start
+      inclusive, end exclusive.
+  - name: end_date
     type: date
     nullable: false
+    notes: >
+      End of this stay segment. Exclusive. Must be <= reservation.check_out.
+      Renamed from check_out in migration 202603160105.
     constraints:
-      - CHECK (check_out > check_in)
+      - CHECK (end_date > start_date)
   - name: created_at
     type: timestamptz
     nullable: false
@@ -84,3 +91,10 @@ notes:
     external_reference_rule).
   - Stays are created atomically with their parent reservation by
     CreateReservationWithStays. A stay cannot exist without a reservation.
+  - start_date/end_date represent the nights assigned to a specific
+    accommodation allocation segment. They are distinct from the
+    reservation-level check_in/check_out envelope. Each stay's range
+    must lie within the reservation envelope but stays do not need
+    to be contiguous. Column names were originally check_in/check_out
+    (renamed in migration 202603160105 to reflect allocation semantics
+    rather than guest-event semantics).

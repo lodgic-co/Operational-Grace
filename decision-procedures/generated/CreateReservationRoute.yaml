@@ -28,19 +28,25 @@ inputs:
   - environment ('live' | 'training' — literal bound at registration)
   - reservation_uuid (body UUID — client idempotence key)
   - guest_name (body string, min length 1)
+  - check_in (body ISO date YYYY-MM-DD — reservation envelope start, inclusive)
+  - check_out (body ISO date YYYY-MM-DD — reservation envelope end, exclusive)
   - stays (body array, min 1 item, each with accommodation_option_type_uuid,
-    check_in, check_out, optional accommodation_option_uuid)
+    start_date, end_date, optional accommodation_option_uuid)
   - X-Actor-User-Uuid, X-Organisation-Uuid, X-Property-Uuid (delegated actor
     headers)
   - X-Request-Id (optional)
 outputs:
-  - 201 with CreateReservationResult body (reservation + stays)
+  - 201 with CreateReservationResult body (was_existing, reservation, stays)
 preconditions:
   - X-Property-Uuid must be present and match property_uuid path parameter.
   - stays must be non-empty.
+  - check_out must be strictly greater than check_in.
+  - Each stay end_date must be strictly greater than start_date.
+  - Each stay range must lie within the reservation check_in/check_out envelope.
 decision_logic:
   - Validate property_uuid via Zod paramsSchema.
-  - Validate body via createReservationBodySchema.
+  - Validate body via createReservationBodySchema (requires check_in, check_out
+    at top level; stays with start_date/end_date per item).
   - Parse delegated actor; if null, throw InvalidRequest.
   - Validate X-Property-Uuid matches property_uuid.
   - Set request telemetry fields.

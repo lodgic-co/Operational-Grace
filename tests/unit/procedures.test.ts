@@ -1,9 +1,10 @@
 import { describe, it, expect, vi } from 'vitest';
-import type { Pool } from 'pg';
+import type { Pool, PoolClient } from 'pg';
 import {
   ResolveEnvironmentSchema,
   AssertPropertyPermission,
   BuildPropertyReservationsResponse,
+  CreateReservationWithStays,
 } from '../../src/domain/procedures.js';
 import type { MeasuredJudgementClient } from '../../src/http/measured-judgement-client.js';
 import { AppError } from '../../src/errors/index.js';
@@ -79,6 +80,132 @@ describe('AssertPropertyPermission', () => {
     await expect(
       AssertPropertyPermission(mjClient, ACTOR_UUID, ORG_UUID, PROP_UUID, 'reservations.view', REQUEST_ID),
     ).rejects.toMatchObject({ status: 502, code: 'bad_gateway' });
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CreateReservationWithStays — validation tests (no DB required)
+// ─────────────────────────────────────────────────────────────────────────────
+
+function makePool(trx: Partial<PoolClient>): Pool {
+  return {
+    connect: vi.fn().mockResolvedValue({
+      query: vi.fn(),
+      release: vi.fn(),
+      ...trx,
+    }),
+  } as unknown as Pool;
+}
+
+const PROP = '44444444-4444-4444-a444-444444444444';
+const OPT_TYPE = '55555555-5555-4555-a555-555555555555';
+
+describe('CreateReservationWithStays — pre-check validation', () => {
+  it('rejects when stays array is empty', async () => {
+    const pool = makePool({});
+    await expect(
+      CreateReservationWithStays('live', pool, pool, 'res-uuid', PROP, 'Guest', '2027-01-04', '2027-01-07', []),
+    ).rejects.toMatchObject({ status: 400, code: 'invalid_request' });
+  });
+
+  it('rejects when reservation check_out equals check_in', async () => {
+    const pool = makePool({});
+    await expect(
+      CreateReservationWithStays('live', pool, pool, 'res-uuid', PROP, 'Guest', '2027-01-07', '2027-01-07', [
+        { accommodation_option_type_uuid: OPT_TYPE, start_date: '2027-01-07', end_date: '2027-01-07' },
+      ]),
+    ).rejects.toMatchObject({ status: 400, code: 'invalid_request' });
+  });
+
+  it('rejects when reservation check_out is before check_in', async () => {
+    const pool = makePool({});
+    await expect(
+      CreateReservationWithStays('live', pool, pool, 'res-uuid', PROP, 'Guest', '2027-01-07', '2027-01-04', [
+        { accommodation_option_type_uuid: OPT_TYPE, start_date: '2027-01-04', end_date: '2027-01-07' },
+      ]),
+    ).rejects.toMatchObject({ status: 400, code: 'invalid_request' });
+  });
+
+  it('rejects when a stay end_date equals start_date', async () => {
+    const pool = makePool({});
+    await expect(
+      CreateReservationWithStays('live', pool, pool, 'res-uuid', PROP, 'Guest', '2027-01-04', '2027-01-07', [
+        { accommodation_option_type_uuid: OPT_TYPE, start_date: '2027-01-05', end_date: '2027-01-05' },
+      ]),
+    ).rejects.toMatchObject({ status: 400, code: 'invalid_request' });
+  });
+
+  it('rejects when a stay end_date is before start_date', async () => {
+    const pool = makePool({});
+    await expect(
+      CreateReservationWithStays('live', pool, pool, 'res-uuid', PROP, 'Guest', '2027-01-04', '2027-01-07', [
+        { accommodation_option_type_uuid: OPT_TYPE, start_date: '2027-01-06', end_date: '2027-01-04' },
+      ]),
+    ).rejects.toMatchObject({ status: 400, code: 'invalid_request' });
+  });
+
+  it('rejects a stay whose start_date is before the reservation check_in', async () => {
+    const pool = makePool({});
+    await expect(
+      CreateReservationWithStays('live', pool, pool, 'res-uuid', PROP, 'Guest', '2027-01-04', '2027-01-07', [
+        { accommodation_option_type_uuid: OPT_TYPE, start_date: '2027-01-03', end_date: '2027-01-06' },
+      ]),
+    ).rejects.toMatchObject({ status: 400, code: 'invalid_request' });
+  });
+
+  it('rejects a stay whose end_date is after the reservation check_out', async () => {
+    const pool = makePool({});
+    await expect(
+      CreateReservationWithStays('live', pool, pool, 'res-uuid', PROP, 'Guest', '2027-01-04', '2027-01-07', [
+        { accommodation_option_type_uuid: OPT_TYPE, start_date: '2027-01-05', end_date: '2027-01-09' },
+      ]),
+    ).rejects.toMatchObject({ status: 400, code: 'invalid_request' });
+  });
+
+  it('passes validation for multiple non-contiguous stays within the reservation envelope', async () => {
+    // Two stays: Jan 4–5 and Jan 6–7 with a gap on Jan 5 night — valid.
+    // We only test the pre-check phase; the pool is expected to be reached.
+    const trxQuery = vi.fn()
+      .mockResolvedValueOnce(undefined) // BEGIN
+      .mockResolvedValueOnce({ rowCount: 0, rows: [] }) // INSERT reservation — conflict, so no rows
+      .mockResolvedValueOnce({ rows: [{ // SELECT reservation after conflict
+        id: 1, uuid: 'res-uuid', property_uuid: PROP, guest_name: 'Guest',
+        check_in: '2027-01-04', check_out: '2027-01-07', created_at: '2027-01-01T00:00:00.000000Z',
+      }] })
+      .mockResolvedValueOnce({ rows: [] }) // SELECT existing stays (was_existing=true path)
+      .mockResolvedValueOnce(undefined); // COMMIT
+
+    const trx = { query: trxQuery, release: vi.fn() } as unknown as PoolClient;
+    const pool = { connect: vi.fn().mockResolvedValue(trx) } as unknown as Pool;
+
+    // Should not throw during validation phase
+    await expect(
+      CreateReservationWithStays('live', pool, pool, 'res-uuid', PROP, 'Guest', '2027-01-04', '2027-01-07', [
+        { accommodation_option_type_uuid: OPT_TYPE, start_date: '2027-01-04', end_date: '2027-01-05' },
+        { accommodation_option_type_uuid: OPT_TYPE, start_date: '2027-01-06', end_date: '2027-01-07' },
+      ]),
+    ).resolves.toBeDefined();
+  });
+
+  it('passes validation for an unallocated stay where accommodation_option_uuid is null', async () => {
+    const trxQuery = vi.fn()
+      .mockResolvedValueOnce(undefined) // BEGIN
+      .mockResolvedValueOnce({ rowCount: 0, rows: [] }) // INSERT reservation — conflict
+      .mockResolvedValueOnce({ rows: [{ // SELECT reservation
+        id: 1, uuid: 'res-uuid', property_uuid: PROP, guest_name: 'Guest',
+        check_in: '2027-01-04', check_out: '2027-01-07', created_at: '2027-01-01T00:00:00.000000Z',
+      }] })
+      .mockResolvedValueOnce({ rows: [] }) // SELECT existing stays
+      .mockResolvedValueOnce(undefined); // COMMIT
+
+    const trx = { query: trxQuery, release: vi.fn() } as unknown as PoolClient;
+    const pool = { connect: vi.fn().mockResolvedValue(trx) } as unknown as Pool;
+
+    await expect(
+      CreateReservationWithStays('live', pool, pool, 'res-uuid', PROP, 'Guest', '2027-01-04', '2027-01-07', [
+        { accommodation_option_type_uuid: OPT_TYPE, accommodation_option_uuid: null, start_date: '2027-01-04', end_date: '2027-01-07' },
+      ]),
+    ).resolves.toBeDefined();
   });
 });
 

@@ -28,13 +28,15 @@ const ISO_DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
 const staySchema = z.object({
   accommodation_option_type_uuid: z.string().regex(UUID_REGEX),
   accommodation_option_uuid: z.string().regex(UUID_REGEX).nullable().optional(),
-  check_in: z.string().regex(ISO_DATE_REGEX, 'check_in must be an ISO date'),
-  check_out: z.string().regex(ISO_DATE_REGEX, 'check_out must be an ISO date'),
+  start_date: z.string().regex(ISO_DATE_REGEX, 'start_date must be an ISO date'),
+  end_date: z.string().regex(ISO_DATE_REGEX, 'end_date must be an ISO date'),
 });
 
 const createReservationBodySchema = z.object({
   reservation_uuid: z.string().regex(UUID_REGEX, 'reservation_uuid must be a valid UUID'),
   guest_name: z.string().min(1, 'guest_name is required'),
+  check_in: z.string().regex(ISO_DATE_REGEX, 'check_in must be an ISO date'),
+  check_out: z.string().regex(ISO_DATE_REGEX, 'check_out must be an ISO date'),
   stays: z.array(staySchema).min(1, 'At least one stay is required'),
 });
 
@@ -130,7 +132,7 @@ export async function reservationRoutes(
     }
 
     const { property_uuid } = paramsResult.data;
-    const { reservation_uuid, guest_name, stays } = bodyResult.data;
+    const { reservation_uuid, guest_name, check_in, check_out, stays } = bodyResult.data;
 
     if (!actor.propertyUuid) {
       throw InvalidRequest('X-Property-Uuid is required for property-scoped requests');
@@ -157,8 +159,8 @@ export async function reservationRoutes(
     const stayInputs: StayInput[] = stays.map((s) => ({
       accommodation_option_type_uuid: s.accommodation_option_type_uuid,
       accommodation_option_uuid: s.accommodation_option_uuid ?? null,
-      check_in: s.check_in,
-      check_out: s.check_out,
+      start_date: s.start_date,
+      end_date: s.end_date,
     }));
 
     const result = await CreateReservationWithStays(
@@ -168,6 +170,8 @@ export async function reservationRoutes(
       reservation_uuid,
       property_uuid,
       guest_name,
+      check_in,
+      check_out,
       stayInputs,
     );
 

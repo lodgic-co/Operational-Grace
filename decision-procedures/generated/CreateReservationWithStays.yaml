@@ -28,25 +28,38 @@ inputs:
   - reservationUuid (string UUID — client-supplied idempotence key)
   - propertyUuid (string UUID — tenant scoping identifier)
   - guestName (string — non-empty)
-  - stays (StayInput[] — array of stay descriptors, min length 1)
+  - checkIn (string ISO date YYYY-MM-DD — reservation booking envelope start, inclusive)
+  - checkOut (string ISO date YYYY-MM-DD — reservation booking envelope end, exclusive)
+  - stays (StayInput[] — array of stay descriptors, min length 1; each with
+    start_date, end_date, accommodation_option_type_uuid,
+    accommodation_option_uuid nullable)
 outputs:
-  - CreateReservationResult (reservation: { uuid, property_uuid, guest_name,
-    created_at }, stays: StayRow[])
+  - CreateReservationResult (was_existing: boolean, reservation: { uuid,
+    property_uuid, guest_name, check_in, check_out, created_at },
+    stays: StayRow[])
 preconditions:
   - stays must be non-empty (enforced by pre-check; InvalidRequest if empty).
-  - All stays must have check_out > check_in (enforced by pre-check).
+  - checkOut must be strictly greater than checkIn (reservation envelope).
+  - All stays must have end_date > start_date.
+  - All stays must have start_date >= checkIn and end_date <= checkOut
+    (stay ranges must lie within the reservation envelope).
   - No active transaction on entry — this procedure opens its own.
 decision_logic:
   - Validate stays.length >= 1; throw InvalidRequest if empty.
-  - Validate check_out > check_in for all stays; throw InvalidRequest on
-    any violation.
+  - Validate checkOut > checkIn; throw InvalidRequest if violated.
+  - For each stay: validate end_date > start_date; throw InvalidRequest if
+    violated.
+  - For each stay: validate start_date >= checkIn and end_date <= checkOut;
+    throw InvalidRequest if any stay falls outside the reservation envelope.
   - Call ResolveEnvironmentSchema to obtain the environment-scoped pool.
   - Acquire a connection and BEGIN.
-  - Call CreateReservation(trx, reservationUuid, propertyUuid, guestName).
+  - Call CreateReservation(trx, reservationUuid, propertyUuid, guestName,
+    checkIn, checkOut).
   - If was_existing=true: SELECT existing stays from reservation_stays by
-    reservation_id; skip stay inserts.
-  - If was_existing=false: call CreateReservationStay once per stay input.
-  - COMMIT; return { reservation, stays }.
+    reservation_id using start_date/end_date column names; skip stay inserts.
+  - If was_existing=false: call CreateReservationStay once per stay input
+    passing start_date and end_date.
+  - COMMIT; return { was_existing, reservation, stays }.
   - On any error: ROLLBACK and re-throw.
 relationship_traversal:
   - ResolveEnvironmentSchema — selects pool by environment literal. No DB.
@@ -66,7 +79,11 @@ set_semantics:
   - Idempotent: repeated calls with the same reservationUuid return the
     same reservation and its original stays.
 error_behaviour:
-  - invalid_request (400) — empty stays array or check_out <= check_in.
+  - invalid_request (400) — empty stays array.
+  - invalid_request (400) — reservation checkOut <= checkIn.
+  - invalid_request (400) — any stay end_date <= start_date.
+  - invalid_request (400) — any stay start_date < reservation checkIn.
+  - invalid_request (400) — any stay end_date > reservation checkOut.
   - Database errors → ROLLBACK and re-throw as internal_error.
 data_dependencies:
   - operational_grace.reservations (via CreateReservation)
@@ -79,5 +96,9 @@ invariants:
     are not possible.
   - Client-supplied UUID idempotence: repeated calls with the same
     reservationUuid always return the same reservation.
+  - reservation.check_in/check_out forms the booking envelope; all stay
+    start_date/end_date ranges must lie within this envelope.
+  - Stay ranges do not need to be contiguous — gaps are permitted.
+  - Date semantics: start inclusive, end exclusive throughout.
 default_outcome: >
   Returns the CreateReservationResult with the reservation and its stays.
