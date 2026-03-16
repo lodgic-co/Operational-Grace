@@ -106,10 +106,6 @@ async function buildHeaders(requestId?: string): Promise<Record<string, string>>
     headers['X-Request-Id'] = requestId;
   }
 
-  if (config.INTERNAL_SERVICE_SECRET && config.NODE_ENV !== 'production') {
-    headers['X-Internal-Secret'] = config.INTERNAL_SERVICE_SECRET;
-  }
-
   return headers;
 }
 
