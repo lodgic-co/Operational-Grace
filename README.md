@@ -105,3 +105,33 @@ pnpm test:integration
 Inbound requests must carry an Auth0 M2M Bearer token whose `azp` claim is in `AUTH0_ALLOWED_AZP`. Outbound calls to `measured-judgement` use a separate M2M token obtained via the client-credentials grant.
 
 In `development` and `test` environments, `X-Internal-Secret` can substitute for a Bearer token (temporary — will be removed once network isolation is in place).
+
+## Delegated Actor Context
+
+Every inbound request must include the following delegated actor headers, forwarded by `polite-intervention`:
+
+| Header | Required | Description |
+|---|---|---|
+| `X-Actor-Type` | Yes | Must be `user`. All other actor types are rejected with `400 invalid_request`. |
+| `X-Actor-User-Uuid` | Yes | UUID of the authenticated user. |
+| `X-Organisation-Uuid` | Yes | Organisation UUID that the request is scoped to. |
+| `X-Property-Uuid` | Yes | Property UUID that the request is scoped to. Must match the `:property_uuid` path parameter; mismatches return `400 invalid_request`. |
+
+**Actor type constraint:** This service hard-rejects any actor type other than `user`. Service, system, and anonymous actors are not permitted.
+
+**Header consistency check:** The `X-Property-Uuid` header value is validated against the `:property_uuid` path parameter on every request. This prevents cross-property access via header spoofing.
+
+## Permission Enforcement
+
+`operational-grace` does not trust the delegated actor context alone. For reservation read endpoints, it calls `measured-judgement` to verify that the actor holds the required permission before returning data.
+
+**Permission checked:** `reservations.view`
+
+**Enforcement flow:**
+
+1. Parse and validate delegated actor context headers.
+2. Call `POST /permissions/check` on `measured-judgement` with `{ actor_user_uuid, organisation_uuid, permission_key: "reservations.view", property_uuids: [property_uuid] }`.
+3. On permission denial, return `404 not_found` (non-leakage: indistinguishable from not found).
+4. On grant, proceed with the reservation query.
+
+`measured-judgement` is the authoritative permission authority. This service does not maintain local permission tables or role data.
