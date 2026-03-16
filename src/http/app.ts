@@ -7,7 +7,6 @@ import { healthRoutes } from '../routes/health.js';
 import { internalRoutes } from '../routes/internal.js';
 import { reservationRoutes } from '../routes/reservations.js';
 import { holdRoutes } from '../routes/holds.js';
-import { verifyInternalSecret } from '../auth/verify-internal-secret.js';
 import { verifyServiceToken } from '../auth/verify-token.js';
 import { registerRequestId, registerCorrelationHeader, registerErrorHandler } from './error-handler.js';
 import type { MeasuredJudgementClient } from './measured-judgement-client.js';
@@ -80,10 +79,7 @@ export function createApp(opts: CreateAppOptions) {
         { request_id: request.requestId, method: request.method, path: request.url },
         'incoming_request',
       );
-      const internalAuthenticated = verifyInternalSecret(request, reply);
-      if (!internalAuthenticated) {
-        await verifyServiceToken(request, reply);
-      }
+      await verifyServiceToken(request, reply);
     }
   });
 

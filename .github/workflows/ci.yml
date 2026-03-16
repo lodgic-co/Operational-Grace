@@ -37,7 +37,7 @@ jobs:
       AUTH0_ISSUER: https://test.auth0.com/
       AUTH0_AUDIENCE: https://api.test/operational-grace
       AUTH0_ALLOWED_AZP: test-pi-m2m-client-id
-      AUTH0_JWKS_URI: http://127.0.0.1:15113/.well-known/jwks.json
+      AUTH0_JWKS_URI: http://127.0.0.1:19999/.well-known/jwks.json
 
       CURSOR_HMAC_SECRET: ci-cursor-hmac-secret
 
@@ -47,7 +47,6 @@ jobs:
       AUTH0_M2M_CLIENT_SECRET: ci-og-m2m-client-secret
       AUTH0_TOKEN_URL: https://test.auth0.com/oauth/token
 
-      INTERNAL_SERVICE_SECRET: ci-internal-secret
       LOG_LEVEL: silent
       OTEL_EXPORTER_OTLP_ENDPOINT: ""
 

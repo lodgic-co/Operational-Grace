@@ -1,10 +1,15 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import supertest from 'supertest';
 import type { FastifyInstance } from 'fastify';
+import { createServer } from 'http';
+import { SignJWT, exportJWK, generateKeyPair } from 'jose';
 import pg from 'pg';
 import type { MeasuredJudgementClient } from '../../src/http/measured-judgement-client.js';
 
-const INTERNAL_SECRET = process.env['INTERNAL_SERVICE_SECRET'] ?? 'test-internal-secret';
+const TEST_ISSUER = 'https://test.auth0.com/';
+const TEST_AUDIENCE = 'https://internal.test.example.com/operational-grace';
+const TEST_AZP = 'polite-intervention-m2m-client-id';
+const JWKS_PORT = 19999;
 
 const PROP_UUID = '11111111-1111-4111-a111-111111111111';
 const PROP_UUID_2 = '22222222-2222-4222-a222-222222222222';
@@ -16,6 +21,9 @@ let app: FastifyInstance;
 let request: ReturnType<typeof supertest>;
 let livePool: pg.Pool;
 let trainingPool: pg.Pool;
+let jwksServer: ReturnType<typeof createServer>;
+let privateKey: Awaited<ReturnType<typeof generateKeyPair>>['privateKey'];
+let kid: string;
 
 const LIVE_SCHEMA = 'operational_grace';
 const TRAINING_SCHEMA = 'operational_grace_training';
@@ -29,6 +37,40 @@ const deniedMjClient: MeasuredJudgementClient = {
 const errorMjClient: MeasuredJudgementClient = {
   checkPermission: async () => { throw new Error('connection refused'); },
 };
+
+async function mintToken(): Promise<string> {
+  const now = Math.floor(Date.now() / 1000);
+  return new SignJWT({ azp: TEST_AZP })
+    .setProtectedHeader({ alg: 'RS256', kid })
+    .setIssuedAt(now)
+    .setExpirationTime(now + 3600)
+    .setSubject('test-subject')
+    .setIssuer(TEST_ISSUER)
+    .setAudience(TEST_AUDIENCE)
+    .sign(privateKey);
+}
+
+async function startJwksServer(): Promise<void> {
+  const keyPair = await generateKeyPair('RS256');
+  privateKey = keyPair.privateKey;
+  kid = 'test-key-1';
+
+  const publicJwk = await exportJWK(keyPair.publicKey);
+  publicJwk.kid = kid;
+  publicJwk.alg = 'RS256';
+  publicJwk.use = 'sig';
+
+  const jwksResponse = JSON.stringify({ keys: [publicJwk] });
+
+  jwksServer = createServer((_req, res) => {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(jwksResponse);
+  });
+
+  await new Promise<void>((resolve) => {
+    jwksServer.listen(JWKS_PORT, '127.0.0.1', resolve);
+  });
+}
 
 async function seedReservations(pool: pg.Pool, schema: string): Promise<void> {
   await pool.query(`SET search_path TO ${schema}`);
@@ -49,6 +91,8 @@ function expectEnvelope(body: unknown, status: number, code: string): void {
 }
 
 beforeAll(async () => {
+  await startJwksServer();
+
   const dbUrl = process.env['DATABASE_URL'];
   if (!dbUrl) throw new Error('DATABASE_URL required for integration tests');
 
@@ -75,6 +119,9 @@ afterAll(async () => {
   await app.close();
   await livePool.end();
   await trainingPool.end();
+  if (jwksServer) {
+    await new Promise<void>((resolve) => jwksServer.close(() => resolve()));
+  }
 });
 
 describe('GET /health/live', () => {
@@ -87,9 +134,10 @@ describe('GET /health/live', () => {
 
 describe('GET /live/properties/:property_uuid/reservations', () => {
   it('returns 200 with reservation list for known property', async () => {
+    const token = await mintToken();
     const res = await request
       .get(`/live/properties/${PROP_UUID}/reservations`)
-      .set('X-Internal-Secret', INTERNAL_SECRET)
+      .set('Authorization', `Bearer ${token}`)
       .set('X-Actor-Type', 'user')
       .set('X-Actor-User-Uuid', ACTOR_UUID)
       .set('X-Organisation-Uuid', ORG_UUID)
@@ -103,9 +151,10 @@ describe('GET /live/properties/:property_uuid/reservations', () => {
   });
 
   it('returns 400 for invalid property_uuid', async () => {
+    const token = await mintToken();
     const res = await request
       .get('/live/properties/not-a-uuid/reservations')
-      .set('X-Internal-Secret', INTERNAL_SECRET)
+      .set('Authorization', `Bearer ${token}`)
       .set('X-Actor-Type', 'user')
       .set('X-Actor-User-Uuid', ACTOR_UUID)
       .set('X-Organisation-Uuid', ORG_UUID)
@@ -116,9 +165,10 @@ describe('GET /live/properties/:property_uuid/reservations', () => {
   });
 
   it('returns 400 when delegated actor headers are missing', async () => {
+    const token = await mintToken();
     const res = await request
       .get(`/live/properties/${PROP_UUID}/reservations`)
-      .set('X-Internal-Secret', INTERNAL_SECRET);
+      .set('Authorization', `Bearer ${token}`);
 
     expect(res.status).toBe(400);
     expectEnvelope(res.body, 400, 'invalid_request');
@@ -147,9 +197,10 @@ describe('GET /live/properties/:property_uuid/reservations', () => {
     await deniedApp.ready();
     const deniedRequest = supertest(deniedApp.server);
 
+    const token = await mintToken();
     const res = await deniedRequest
       .get(`/live/properties/${UNKNOWN_PROP_UUID}/reservations`)
-      .set('X-Internal-Secret', INTERNAL_SECRET)
+      .set('Authorization', `Bearer ${token}`)
       .set('X-Actor-Type', 'user')
       .set('X-Actor-User-Uuid', ACTOR_UUID)
       .set('X-Organisation-Uuid', ORG_UUID)
@@ -175,9 +226,10 @@ describe('GET /live/properties/:property_uuid/reservations', () => {
     await errorApp.ready();
     const errorRequest = supertest(errorApp.server);
 
+    const token = await mintToken();
     const res = await errorRequest
       .get(`/live/properties/${PROP_UUID}/reservations`)
-      .set('X-Internal-Secret', INTERNAL_SECRET)
+      .set('Authorization', `Bearer ${token}`)
       .set('X-Actor-Type', 'user')
       .set('X-Actor-User-Uuid', ACTOR_UUID)
       .set('X-Organisation-Uuid', ORG_UUID)
@@ -192,9 +244,10 @@ describe('GET /live/properties/:property_uuid/reservations', () => {
   });
 
   it('paginates results correctly using limit', async () => {
+    const token = await mintToken();
     const res = await request
       .get(`/live/properties/${PROP_UUID}/reservations?limit=1`)
-      .set('X-Internal-Secret', INTERNAL_SECRET)
+      .set('Authorization', `Bearer ${token}`)
       .set('X-Actor-Type', 'user')
       .set('X-Actor-User-Uuid', ACTOR_UUID)
       .set('X-Organisation-Uuid', ORG_UUID)
@@ -206,9 +259,10 @@ describe('GET /live/properties/:property_uuid/reservations', () => {
   });
 
   it('returns second page when next_cursor from page 1 is supplied (M24)', async () => {
+    const token = await mintToken();
     const page1 = await request
       .get(`/live/properties/${PROP_UUID}/reservations?limit=1`)
-      .set('X-Internal-Secret', INTERNAL_SECRET)
+      .set('Authorization', `Bearer ${token}`)
       .set('X-Actor-Type', 'user')
       .set('X-Actor-User-Uuid', ACTOR_UUID)
       .set('X-Organisation-Uuid', ORG_UUID)
@@ -220,7 +274,7 @@ describe('GET /live/properties/:property_uuid/reservations', () => {
 
     const page2 = await request
       .get(`/live/properties/${PROP_UUID}/reservations?limit=1&cursor=${encodeURIComponent(cursor)}`)
-      .set('X-Internal-Secret', INTERNAL_SECRET)
+      .set('Authorization', `Bearer ${await mintToken()}`)
       .set('X-Actor-Type', 'user')
       .set('X-Actor-User-Uuid', ACTOR_UUID)
       .set('X-Organisation-Uuid', ORG_UUID)
@@ -234,9 +288,10 @@ describe('GET /live/properties/:property_uuid/reservations', () => {
   });
 
   it('returns 400 invalid_cursor for a tampered cursor (M34)', async () => {
+    const token = await mintToken();
     const res = await request
       .get(`/live/properties/${PROP_UUID}/reservations?cursor=dGVzdA.invalidsignature`)
-      .set('X-Internal-Secret', INTERNAL_SECRET)
+      .set('Authorization', `Bearer ${token}`)
       .set('X-Actor-Type', 'user')
       .set('X-Actor-User-Uuid', ACTOR_UUID)
       .set('X-Organisation-Uuid', ORG_UUID)
@@ -247,9 +302,10 @@ describe('GET /live/properties/:property_uuid/reservations', () => {
   });
 
   it('returns 400 invalid_cursor for a malformed cursor with no dot separator (M34)', async () => {
+    const token = await mintToken();
     const res = await request
       .get(`/live/properties/${PROP_UUID}/reservations?cursor=notacursoratall`)
-      .set('X-Internal-Secret', INTERNAL_SECRET)
+      .set('Authorization', `Bearer ${token}`)
       .set('X-Actor-Type', 'user')
       .set('X-Actor-User-Uuid', ACTOR_UUID)
       .set('X-Organisation-Uuid', ORG_UUID)
@@ -260,9 +316,10 @@ describe('GET /live/properties/:property_uuid/reservations', () => {
   });
 
   it('returns 400 when X-Property-Uuid header is missing (M16)', async () => {
+    const token = await mintToken();
     const res = await request
       .get(`/live/properties/${PROP_UUID}/reservations`)
-      .set('X-Internal-Secret', INTERNAL_SECRET)
+      .set('Authorization', `Bearer ${token}`)
       .set('X-Actor-Type', 'user')
       .set('X-Actor-User-Uuid', ACTOR_UUID)
       .set('X-Organisation-Uuid', ORG_UUID);
@@ -272,9 +329,10 @@ describe('GET /live/properties/:property_uuid/reservations', () => {
   });
 
   it('returns 400 when X-Property-Uuid does not match path property_uuid (M16)', async () => {
+    const token = await mintToken();
     const res = await request
       .get(`/live/properties/${PROP_UUID}/reservations`)
-      .set('X-Internal-Secret', INTERNAL_SECRET)
+      .set('Authorization', `Bearer ${token}`)
       .set('X-Actor-Type', 'user')
       .set('X-Actor-User-Uuid', ACTOR_UUID)
       .set('X-Organisation-Uuid', ORG_UUID)
@@ -287,9 +345,10 @@ describe('GET /live/properties/:property_uuid/reservations', () => {
 
 describe('GET /training/properties/:property_uuid/reservations', () => {
   it('returns 200 from training schema (data isolated from live)', async () => {
+    const token = await mintToken();
     const res = await request
       .get(`/training/properties/${PROP_UUID}/reservations`)
-      .set('X-Internal-Secret', INTERNAL_SECRET)
+      .set('Authorization', `Bearer ${token}`)
       .set('X-Actor-Type', 'user')
       .set('X-Actor-User-Uuid', ACTOR_UUID)
       .set('X-Organisation-Uuid', ORG_UUID)
@@ -301,9 +360,10 @@ describe('GET /training/properties/:property_uuid/reservations', () => {
   });
 
   it('returns 404 for path that does not match any route', async () => {
+    const token = await mintToken();
     const res = await request
       .get(`/unknown/properties/${PROP_UUID}/reservations`)
-      .set('X-Internal-Secret', INTERNAL_SECRET)
+      .set('Authorization', `Bearer ${token}`)
       .set('X-Actor-Type', 'user')
       .set('X-Actor-User-Uuid', ACTOR_UUID)
       .set('X-Organisation-Uuid', ORG_UUID)
@@ -343,10 +403,11 @@ describe('live/training schema isolation (M37 cross-contamination)', () => {
     );
   }
 
-  function reservationRequest(env: 'live' | 'training') {
+  async function reservationRequest(env: 'live' | 'training') {
+    const token = await mintToken();
     return request
       .get(`/${env}/properties/${ISOLATION_PROP}/reservations`)
-      .set('X-Internal-Secret', INTERNAL_SECRET)
+      .set('Authorization', `Bearer ${token}`)
       .set('X-Actor-Type', 'user')
       .set('X-Actor-User-Uuid', ACTOR_UUID)
       .set('X-Organisation-Uuid', ORG_UUID)

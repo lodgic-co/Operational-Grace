@@ -1,4 +1,3 @@
-process.env['INTERNAL_SERVICE_SECRET'] = process.env['INTERNAL_SERVICE_SECRET'] ?? 'test-internal-secret';
 process.env['AUTH0_DOMAIN'] = 'test.auth0.com';
 process.env['AUTH0_ISSUER'] = 'https://test.auth0.com/';
 process.env['AUTH0_AUDIENCE'] = 'https://internal.test.example.com/operational-grace';
