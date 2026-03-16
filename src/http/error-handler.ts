@@ -57,8 +57,23 @@ export function registerErrorHandler(app: FastifyInstance): void {
       return reply.code(error.status).send(error.toEnvelope(reqId));
     }
 
+    const fastifyStatusCode = (error as { statusCode?: number }).statusCode;
+    if (typeof fastifyStatusCode === 'number' && fastifyStatusCode >= 400 && fastifyStatusCode < 500) {
+      request.errorCode = 'invalid_request';
+      request.log.warn({ err: error }, 'client_error');
+      return reply.code(fastifyStatusCode).send({
+        error: {
+          status: fastifyStatusCode,
+          code: 'invalid_request',
+          message: error.message,
+          request_id: reqId,
+          retryable: false,
+        },
+      });
+    }
+
     request.errorCode = 'internal_error';
-    request.log.error({ err: error }, 'unhandled error');
+    request.log.error({ err: error }, 'unhandled_error');
 
     if (span) {
       span.recordException(error);
