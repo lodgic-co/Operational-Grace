@@ -396,8 +396,8 @@ describe('live/training schema isolation (M37 cross-contamination)', () => {
 
   async function seedIsolationProp(pool: pg.Pool, schema: string, uuid: string): Promise<void> {
     await pool.query(
-      `INSERT INTO ${schema}.reservations (uuid, property_uuid, guest_name)
-       VALUES ($1::uuid, $2::uuid, 'Isolation Seed Guest')
+      `INSERT INTO ${schema}.reservations (uuid, property_uuid, guest_name, check_in, check_out)
+       VALUES ($1::uuid, $2::uuid, 'Isolation Seed Guest', '2027-01-04', '2027-01-07')
        ON CONFLICT (uuid) DO NOTHING`,
       [uuid, ISOLATION_PROP],
     );

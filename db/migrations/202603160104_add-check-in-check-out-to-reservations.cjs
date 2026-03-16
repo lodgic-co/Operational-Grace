@@ -10,13 +10,14 @@
  * (schema-aware pool sets search_path at connection time).
  */
 module.exports.up = (pgm) => {
-  pgm.sql(`ALTER TABLE reservations ADD COLUMN check_in  date NULL DEFAULT '1970-01-01'`);
-  pgm.sql(`ALTER TABLE reservations ADD COLUMN check_out date NULL DEFAULT '1970-01-01'`);
-  pgm.sql(`UPDATE reservations SET check_in = '1970-01-01', check_out = '1970-01-01' WHERE check_in IS NULL`);
+  // Add as nullable with no default so existing rows stay NULL.
+  pgm.sql(`ALTER TABLE reservations ADD COLUMN check_in  date NULL`);
+  pgm.sql(`ALTER TABLE reservations ADD COLUMN check_out date NULL`);
+  // Backfill existing rows with a valid placeholder (check_out strictly after
+  // check_in) before tightening to NOT NULL and adding the CHECK constraint.
+  pgm.sql(`UPDATE reservations SET check_in = '1900-01-01', check_out = '1900-01-02' WHERE check_in IS NULL`);
   pgm.sql(`ALTER TABLE reservations ALTER COLUMN check_in  SET NOT NULL`);
   pgm.sql(`ALTER TABLE reservations ALTER COLUMN check_out SET NOT NULL`);
-  pgm.sql(`ALTER TABLE reservations ALTER COLUMN check_in  DROP DEFAULT`);
-  pgm.sql(`ALTER TABLE reservations ALTER COLUMN check_out DROP DEFAULT`);
   pgm.sql(`ALTER TABLE reservations ADD CONSTRAINT reservations_check_out_after_check_in CHECK (check_out > check_in)`);
 };
 
