@@ -75,11 +75,11 @@ async function startJwksServer(): Promise<void> {
 async function seedReservations(pool: pg.Pool, schema: string): Promise<void> {
   await pool.query(`SET search_path TO ${schema}`);
   await pool.query(`
-    INSERT INTO reservations (uuid, property_uuid, guest_name)
+    INSERT INTO reservations (uuid, property_uuid, guest_name, check_in, check_out)
     VALUES
-      ('aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa', $1::uuid, 'Seed Guest A'),
-      ('bbbbbbbb-bbbb-4bbb-abbb-bbbbbbbbbbbb', $1::uuid, 'Seed Guest B'),
-      ('cccccccc-cccc-4ccc-accc-cccccccccccc', $2::uuid, 'Seed Guest C')
+      ('aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa', $1::uuid, 'Seed Guest A', '2027-01-04', '2027-01-07'),
+      ('bbbbbbbb-bbbb-4bbb-abbb-bbbbbbbbbbbb', $1::uuid, 'Seed Guest B', '2027-02-10', '2027-02-14'),
+      ('cccccccc-cccc-4ccc-accc-cccccccccccc', $2::uuid, 'Seed Guest C', '2027-03-01', '2027-03-05')
     ON CONFLICT (uuid) DO NOTHING
   `, [PROP_UUID, PROP_UUID_2]);
 }
