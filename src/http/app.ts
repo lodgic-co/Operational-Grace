@@ -6,6 +6,7 @@ import { loggerOptions } from '../observability/logger.js';
 import { healthRoutes } from '../routes/health.js';
 import { internalRoutes } from '../routes/internal.js';
 import { reservationRoutes } from '../routes/reservations.js';
+import { holdRoutes } from '../routes/holds.js';
 import { verifyInternalSecret } from '../auth/verify-internal-secret.js';
 import { verifyServiceToken } from '../auth/verify-token.js';
 import { registerRequestId, registerCorrelationHeader, registerErrorHandler } from './error-handler.js';
@@ -49,6 +50,15 @@ export function createApp(opts: CreateAppOptions) {
   );
   app.register(
     (f) => reservationRoutes(f, { environment: 'training', livePool, trainingPool, mjClient }),
+    { prefix: '/training' },
+  );
+
+  app.register(
+    (f) => holdRoutes(f, { environment: 'live', livePool, trainingPool, mjClient }),
+    { prefix: '/live' },
+  );
+  app.register(
+    (f) => holdRoutes(f, { environment: 'training', livePool, trainingPool, mjClient }),
     { prefix: '/training' },
   );
 

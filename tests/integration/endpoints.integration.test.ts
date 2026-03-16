@@ -33,11 +33,11 @@ const errorMjClient: MeasuredJudgementClient = {
 async function seedReservations(pool: pg.Pool, schema: string): Promise<void> {
   await pool.query(`SET search_path TO ${schema}`);
   await pool.query(`
-    INSERT INTO reservations (uuid, property_uuid)
+    INSERT INTO reservations (uuid, property_uuid, guest_name)
     VALUES
-      ('aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa', $1::uuid),
-      ('bbbbbbbb-bbbb-4bbb-abbb-bbbbbbbbbbbb', $1::uuid),
-      ('cccccccc-cccc-4ccc-accc-cccccccccccc', $2::uuid)
+      ('aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa', $1::uuid, 'Seed Guest A'),
+      ('bbbbbbbb-bbbb-4bbb-abbb-bbbbbbbbbbbb', $1::uuid, 'Seed Guest B'),
+      ('cccccccc-cccc-4ccc-accc-cccccccccccc', $2::uuid, 'Seed Guest C')
     ON CONFLICT (uuid) DO NOTHING
   `, [PROP_UUID, PROP_UUID_2]);
 }
@@ -336,8 +336,8 @@ describe('live/training schema isolation (M37 cross-contamination)', () => {
 
   async function seedIsolationProp(pool: pg.Pool, schema: string, uuid: string): Promise<void> {
     await pool.query(
-      `INSERT INTO ${schema}.reservations (uuid, property_uuid)
-       VALUES ($1::uuid, $2::uuid)
+      `INSERT INTO ${schema}.reservations (uuid, property_uuid, guest_name)
+       VALUES ($1::uuid, $2::uuid, 'Isolation Seed Guest')
        ON CONFLICT (uuid) DO NOTHING`,
       [uuid, ISOLATION_PROP],
     );

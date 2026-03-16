@@ -1,8 +1,287 @@
-import type { Pool } from 'pg';
+import type { Pool, PoolClient } from 'pg';
 import type { Span } from '@opentelemetry/api';
 import { encodeCursor, decodeCursor } from './cursor.js';
-import { AppError, NotFound, BadGateway } from '../errors/index.js';
+import { AppError, NotFound, BadGateway, InvalidRequest } from '../errors/index.js';
 import type { MeasuredJudgementClient } from '../http/measured-judgement-client.js';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Reservation + Stay create procedures
+// I16-impl-mutation-procedure-taxonomy-and-transaction-discipline
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface CreatedReservationRow {
+  id: number;
+  uuid: string;
+  property_uuid: string;
+  guest_name: string;
+  created_at: string;
+}
+
+export interface StayRow {
+  uuid: string;
+  reservation_id: number;
+  accommodation_option_type_uuid: string;
+  accommodation_option_uuid: string | null;
+  check_in: string;
+  check_out: string;
+  created_at: string;
+}
+
+/**
+ * Inserts a reservation row using ON CONFLICT (uuid) DO NOTHING for
+ * client-supplied UUID idempotence. Returns the record and was_existing flag.
+ * Called within a caller-supplied transaction context — does not own its
+ * own transaction.
+ *
+ * Implements create procedure taxonomy per I16.
+ */
+export async function CreateReservation(
+  trx: PoolClient,
+  reservationUuid: string,
+  propertyUuid: string,
+  guestName: string,
+): Promise<{ reservation: CreatedReservationRow; was_existing: boolean }> {
+  const insertResult = await trx.query(
+    `INSERT INTO reservations (uuid, property_uuid, guest_name)
+     VALUES ($1::uuid, $2::uuid, $3)
+     ON CONFLICT (uuid) DO NOTHING`,
+    [reservationUuid, propertyUuid, guestName],
+  );
+
+  const was_existing = (insertResult.rowCount ?? 0) === 0;
+
+  const result = await trx.query(
+    `SELECT id, uuid, property_uuid, guest_name,
+            to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS created_at
+     FROM reservations
+     WHERE uuid = $1::uuid`,
+    [reservationUuid],
+  );
+
+  return { reservation: result.rows[0] as CreatedReservationRow, was_existing };
+}
+
+/**
+ * Inserts one reservation_stay row within a caller-supplied transaction.
+ * stay UUID is generated server-side via gen_random_uuid() at insert time.
+ * Does not own its own transaction — called by CreateReservationWithStays.
+ *
+ * Implements create procedure taxonomy per I16.
+ */
+export async function CreateReservationStay(
+  trx: PoolClient,
+  reservationId: number,
+  accommodationOptionTypeUuid: string,
+  accommodationOptionUuid: string | null,
+  checkIn: string,
+  checkOut: string,
+): Promise<StayRow> {
+  const result = await trx.query(
+    `INSERT INTO reservation_stays
+       (reservation_id, accommodation_option_type_uuid, accommodation_option_uuid, check_in, check_out)
+     VALUES ($1, $2::uuid, $3, $4::date, $5::date)
+     RETURNING
+       uuid,
+       reservation_id,
+       accommodation_option_type_uuid,
+       accommodation_option_uuid,
+       check_in::text,
+       check_out::text,
+       to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS created_at`,
+    [reservationId, accommodationOptionTypeUuid, accommodationOptionUuid ?? null, checkIn, checkOut],
+  );
+  return result.rows[0] as StayRow;
+}
+
+export interface StayInput {
+  accommodation_option_type_uuid: string;
+  accommodation_option_uuid?: string | null;
+  check_in: string;
+  check_out: string;
+}
+
+export interface CreateReservationResult {
+  reservation: { uuid: string; property_uuid: string; guest_name: string; created_at: string };
+  stays: StayRow[];
+}
+
+/**
+ * Orchestrating create procedure. Owns the full transaction boundary for
+ * reservation + all stays. Calls CreateReservation and CreateReservationStay
+ * as sub-procedures within the transaction.
+ *
+ * Idempotence: if was_existing=true (reservation UUID already existed), the
+ * existing reservation and its stays are returned without inserting new rows.
+ *
+ * BEGIN → CreateReservation → N × CreateReservationStay → COMMIT
+ * Any failure → ROLLBACK. Partial writes are not possible.
+ *
+ * Implements create procedure taxonomy per I16.
+ */
+export async function CreateReservationWithStays(
+  environment: 'live' | 'training',
+  livePool: Pool,
+  trainingPool: Pool,
+  reservationUuid: string,
+  propertyUuid: string,
+  guestName: string,
+  stays: StayInput[],
+): Promise<CreateReservationResult> {
+  if (stays.length === 0) {
+    throw InvalidRequest('A reservation must contain at least one stay');
+  }
+
+  for (const stay of stays) {
+    if (stay.check_out <= stay.check_in) {
+      throw InvalidRequest('check_out must be greater than check_in for all stays');
+    }
+  }
+
+  const { pool: envPool } = ResolveEnvironmentSchema(environment, livePool, trainingPool);
+  const trx = await envPool.connect();
+
+  try {
+    await trx.query('BEGIN');
+
+    const { reservation, was_existing } = await CreateReservation(trx, reservationUuid, propertyUuid, guestName);
+
+    let stayRows: StayRow[];
+
+    if (was_existing) {
+      const existing = await trx.query(
+        `SELECT uuid, reservation_id, accommodation_option_type_uuid, accommodation_option_uuid,
+                check_in::text, check_out::text,
+                to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS created_at
+         FROM reservation_stays
+         WHERE reservation_id = $1`,
+        [reservation.id],
+      );
+      stayRows = existing.rows as StayRow[];
+    } else {
+      stayRows = [];
+      for (const stay of stays) {
+        const stayRow = await CreateReservationStay(
+          trx,
+          reservation.id,
+          stay.accommodation_option_type_uuid,
+          stay.accommodation_option_uuid ?? null,
+          stay.check_in,
+          stay.check_out,
+        );
+        stayRows.push(stayRow);
+      }
+    }
+
+    await trx.query('COMMIT');
+
+    return {
+      reservation: {
+        uuid: reservation.uuid,
+        property_uuid: reservation.property_uuid,
+        guest_name: reservation.guest_name,
+        created_at: reservation.created_at,
+      },
+      stays: stayRows,
+    };
+  } catch (err) {
+    await trx.query('ROLLBACK');
+    throw err;
+  } finally {
+    trx.release();
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Hold create procedure
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface HoldRow {
+  uuid: string;
+  property_uuid: string;
+  accommodation_option_type_uuid: string;
+  accommodation_option_uuid: string | null;
+  check_in: string;
+  check_out: string;
+  expires_at: string;
+  created_at: string;
+}
+
+export interface CreateHoldResult {
+  hold: HoldRow;
+  was_existing: boolean;
+}
+
+/**
+ * Flat create procedure for a hold. Owns its own transaction boundary.
+ * Idempotence is enforced via UNIQUE (uuid) ON CONFLICT DO NOTHING.
+ * Returns the hold record and a was_existing flag.
+ *
+ * BEGIN → INSERT holds ON CONFLICT (uuid) DO NOTHING → SELECT → COMMIT
+ * Any failure → ROLLBACK. Partial writes are not possible.
+ *
+ * Implements create procedure taxonomy per I16.
+ */
+export async function CreateHold(
+  environment: 'live' | 'training',
+  livePool: Pool,
+  trainingPool: Pool,
+  holdUuid: string,
+  propertyUuid: string,
+  accommodationOptionTypeUuid: string,
+  accommodationOptionUuid: string | null,
+  checkIn: string,
+  checkOut: string,
+  expiresAt: string,
+): Promise<CreateHoldResult> {
+  if (checkOut <= checkIn) {
+    throw InvalidRequest('check_out must be greater than check_in');
+  }
+
+  const { pool: envPool } = ResolveEnvironmentSchema(environment, livePool, trainingPool);
+  const trx = await envPool.connect();
+
+  try {
+    await trx.query('BEGIN');
+
+    const insertResult = await trx.query(
+      `INSERT INTO holds
+         (uuid, property_uuid, accommodation_option_type_uuid, accommodation_option_uuid,
+          check_in, check_out, expires_at)
+       VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5::date, $6::date, $7::timestamptz)
+       ON CONFLICT (uuid) DO NOTHING`,
+      [
+        holdUuid,
+        propertyUuid,
+        accommodationOptionTypeUuid,
+        accommodationOptionUuid ?? null,
+        checkIn,
+        checkOut,
+        expiresAt,
+      ],
+    );
+
+    const was_existing = insertResult.rowCount === 0;
+
+    const selectResult = await trx.query(
+      `SELECT uuid, property_uuid, accommodation_option_type_uuid, accommodation_option_uuid,
+              check_in::text, check_out::text,
+              to_char(expires_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS expires_at,
+              to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS created_at
+       FROM holds
+       WHERE uuid = $1::uuid`,
+      [holdUuid],
+    );
+
+    await trx.query('COMMIT');
+
+    return { hold: selectResult.rows[0] as HoldRow, was_existing };
+  } catch (err) {
+    await trx.query('ROLLBACK');
+    throw err;
+  } finally {
+    trx.release();
+  }
+}
 
 /**
  * Selects the database pool for the requested operating environment.

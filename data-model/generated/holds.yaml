@@ -1,0 +1,94 @@
+id: holds
+entity_name: holds
+owning_service: operational-grace
+persistence_object: operational_grace.holds
+tenant_scope: property
+mutability: mutable
+primary_key: [id]
+foreign_keys: []
+unique_constraints:
+  - [uuid]
+    name: holds_uuid_key
+table_constraints:
+  - name: holds_check_out_after_check_in
+    definition: CHECK (check_out > check_in)
+indexes:
+  - name: holds_uuid_idx
+    columns: [uuid]
+    unique: true
+  - name: holds_property_uuid_idx
+    columns: [property_uuid]
+fields:
+  - name: id
+    type: integer
+    nullable: false
+    generated: GENERATED ALWAYS AS IDENTITY
+    notes: Internal surrogate key. Never exposed in public responses.
+  - name: uuid
+    type: uuid
+    nullable: false
+    public_identifier: true
+    notes: >
+      Client-supplied UUID used for idempotent hold creation. ON CONFLICT
+      (uuid) DO NOTHING enables safe retries. Unlike reservation_stays,
+      holds accept a client-supplied uuid.
+  - name: property_uuid
+    type: uuid
+    nullable: false
+    notes: >
+      Cross-service reference to the property in considered-response.
+      No local FK constraint per I16 external_reference_rule. Tenant
+      scoping identifier — all hold queries should be constrained by
+      this value.
+  - name: accommodation_option_type_uuid
+    type: uuid
+    nullable: false
+    notes: >
+      Cross-service reference to considered-response's
+      accommodation_option_types. No local FK per I16.
+  - name: accommodation_option_uuid
+    type: uuid
+    nullable: true
+    notes: >
+      Optional cross-service reference to a concrete sellable option.
+      NULL means the hold is not yet allocated to a specific option.
+      No local FK per I16.
+  - name: check_in
+    type: date
+    nullable: false
+  - name: check_out
+    type: date
+    nullable: false
+    constraints:
+      - CHECK (check_out > check_in)
+  - name: expires_at
+    type: timestamptz
+    nullable: false
+    notes: >
+      Timestamp at which this hold expires. Expiry enforcement and
+      cleanup are deferred (see platform TODO: hold-expiration-cleanup).
+  - name: created_at
+    type: timestamptz
+    nullable: false
+    default: now()
+  - name: updated_at
+    type: timestamptz
+    nullable: false
+    default: now()
+triggers:
+  - name: set_holds_updated_at
+    event: BEFORE UPDATE
+    for_each: ROW
+    function: set_updated_at()
+notes:
+  - This table exists in both operational_grace and
+    operational_grace_training schemas with identical structure.
+  - All UUID fields referencing considered-response entities are conceptual
+    cross-service references with no local FK constraints (I16
+    external_reference_rule).
+  - Flat model — there is no holds_stays child table in round one.
+    Multi-stay holds are deferred (see platform TODO: multi-stay-holds).
+  - expires_at is stored but not yet enforced by a background job. Expiry
+    cleanup is deferred (see platform TODO: hold-expiration-cleanup).
+  - Client-supplied uuid provides idempotence: repeated CreateHold calls
+    with the same hold_uuid return the same row safely.
