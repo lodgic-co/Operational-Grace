@@ -8,6 +8,8 @@ import {
   AssertPropertyPermission,
   SelectPropertyReservations,
   BuildPropertyReservationsResponse,
+  CreateReservationWithStays,
+  type StayInput,
 } from '../domain/procedures.js';
 import type { MeasuredJudgementClient } from '../http/measured-judgement-client.js';
 
@@ -20,6 +22,20 @@ const paramsSchema = z.object({
 const querySchema = z.object({
   limit: z.coerce.number().int().min(1).max(200).default(50).optional(),
   cursor: z.string().optional(),
+});
+
+const ISO_DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
+const staySchema = z.object({
+  accommodation_option_type_uuid: z.string().regex(UUID_REGEX),
+  accommodation_option_uuid: z.string().regex(UUID_REGEX).nullable().optional(),
+  check_in: z.string().regex(ISO_DATE_REGEX, 'check_in must be an ISO date'),
+  check_out: z.string().regex(ISO_DATE_REGEX, 'check_out must be an ISO date'),
+});
+
+const createReservationBodySchema = z.object({
+  reservation_uuid: z.string().regex(UUID_REGEX, 'reservation_uuid must be a valid UUID'),
+  guest_name: z.string().min(1, 'guest_name is required'),
+  stays: z.array(staySchema).min(1, 'At least one stay is required'),
 });
 
 export interface ReservationRoutesOptions {
@@ -93,5 +109,68 @@ export async function reservationRoutes(
     const response = BuildPropertyReservationsResponse(reservations, next_cursor);
 
     return reply.code(200).send(response);
+  });
+
+  app.post<{
+    Params: { property_uuid: string };
+  }>('/properties/:property_uuid/reservations', async (request, reply) => {
+    const paramsResult = paramsSchema.safeParse(request.params);
+    if (!paramsResult.success) {
+      throw InvalidRequest(paramsResult.error.issues[0].message);
+    }
+
+    const bodyResult = createReservationBodySchema.safeParse(request.body);
+    if (!bodyResult.success) {
+      throw InvalidRequest(bodyResult.error.issues[0].message);
+    }
+
+    const actor = parseDelegatedActor(request);
+    if (!actor) {
+      throw InvalidRequest('Delegated actor headers required');
+    }
+
+    const { property_uuid } = paramsResult.data;
+    const { reservation_uuid, guest_name, stays } = bodyResult.data;
+
+    if (!actor.propertyUuid) {
+      throw InvalidRequest('X-Property-Uuid is required for property-scoped requests');
+    }
+    if (actor.propertyUuid !== property_uuid) {
+      throw InvalidRequest('X-Property-Uuid must match property_uuid path parameter');
+    }
+
+    request.actorUserUuid = actor.actorUserUuid;
+    request.organisationUuid = actor.organisationUuid;
+    request.propertyUuid = property_uuid;
+    request.environment = environment;
+
+    await AssertPropertyPermission(
+      mjClient,
+      actor.actorUserUuid,
+      actor.organisationUuid,
+      property_uuid,
+      'reservations.create',
+      request.requestId,
+      request.inboundSpan,
+    );
+
+    const stayInputs: StayInput[] = stays.map((s) => ({
+      accommodation_option_type_uuid: s.accommodation_option_type_uuid,
+      accommodation_option_uuid: s.accommodation_option_uuid ?? null,
+      check_in: s.check_in,
+      check_out: s.check_out,
+    }));
+
+    const result = await CreateReservationWithStays(
+      environment,
+      livePool,
+      trainingPool,
+      reservation_uuid,
+      property_uuid,
+      guest_name,
+      stayInputs,
+    );
+
+    return reply.code(201).send(result);
   });
 }

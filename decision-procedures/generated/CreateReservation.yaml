@@ -1,0 +1,68 @@
+procedure_name: CreateReservation
+procedure_kind: domain
+identifier_mode: internal_only
+owning_service: operational-grace
+purpose: >
+  Insert a reservation row using ON CONFLICT (uuid) DO NOTHING for
+  client-supplied UUID idempotence. Returns the record and a was_existing
+  flag indicating whether the UUID already existed. This procedure does not
+  own its own transaction — it is called within a transaction context
+  supplied by CreateReservationWithStays.
+
+  Implements the create procedure taxonomy per
+  I16-impl-mutation-procedure-taxonomy-and-transaction-discipline.yaml:
+  new entity creation, accepts a caller-supplied transaction context,
+  client-supplied UUID for idempotence.
+source_files:
+  - src/domain/procedures.ts
+used_by:
+  - CreateReservationWithStays (called within its transaction)
+caller_context: >
+  Called exclusively from CreateReservationWithStays inside an active
+  BEGIN/COMMIT transaction. Must not be called outside a transaction context.
+inputs:
+  - trx (PoolClient — an active transaction connection)
+  - reservationUuid (string UUID — client-supplied idempotence key)
+  - propertyUuid (string UUID — tenant scoping identifier)
+  - guestName (string — guest name for the reservation, non-empty)
+outputs:
+  - reservation (CreatedReservationRow — id, uuid, property_uuid, guest_name,
+    created_at)
+  - was_existing (boolean — true if ON CONFLICT fired, false if new row)
+preconditions:
+  - A transaction must be active on trx.
+  - reservationUuid must be a syntactically valid UUID.
+  - guestName must be a non-empty string (enforced upstream).
+decision_logic:
+  - INSERT INTO reservations (uuid, property_uuid, guest_name) VALUES
+    ($1::uuid, $2::uuid, $3) ON CONFLICT (uuid) DO NOTHING.
+  - was_existing = (insertResult.rowCount ?? 0) === 0.
+  - SELECT id, uuid, property_uuid, guest_name, created_at FROM reservations
+    WHERE uuid = $1::uuid.
+  - Return { reservation, was_existing }.
+relationship_traversal:
+  - INSERT into reservations with ON CONFLICT (uuid) DO NOTHING.
+  - SELECT from reservations by uuid — returns the row whether new or
+    pre-existing.
+scoping_constraints:
+  - property_uuid is passed through as the tenant scope; no local property
+    resolution is performed here.
+  - The UNIQUE constraint on (uuid) drives the idempotence guarantee.
+set_semantics:
+  - After this call, exactly one reservations row with the given uuid exists.
+  - was_existing=true means the row already existed before this call.
+  - was_existing=false means a new row was created.
+error_behaviour:
+  - Database errors propagate to the caller (CreateReservationWithStays)
+    which handles ROLLBACK.
+data_dependencies:
+  - operational_grace.reservations (write — INSERT, then SELECT by uuid)
+side_effects: >
+  Inserts zero or one row into reservations depending on whether the
+  uuid already exists.
+invariants:
+  - Client-supplied UUID idempotence: repeated calls with the same
+    reservationUuid are safe and produce the same reservation row.
+default_outcome: >
+  Returns the reservation row and was_existing=false for a new reservation,
+  or was_existing=true for an idempotent replay.

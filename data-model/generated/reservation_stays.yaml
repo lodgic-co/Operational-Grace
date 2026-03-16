@@ -1,0 +1,86 @@
+id: reservation_stays
+entity_name: reservation_stays
+owning_service: operational-grace
+persistence_object: operational_grace.reservation_stays
+tenant_scope: property
+mutability: immutable
+primary_key: [id]
+foreign_keys:
+  - columns: [reservation_id]
+    references: reservations(id)
+    on_delete: CASCADE
+    notes: Local FK within the same schema — stays are owned by their reservation.
+unique_constraints:
+  - [uuid]
+    name: reservation_stays_uuid_key
+table_constraints:
+  - name: reservation_stays_check_out_after_check_in
+    definition: CHECK (check_out > check_in)
+indexes:
+  - name: reservation_stays_uuid_idx
+    columns: [uuid]
+    unique: true
+  - name: reservation_stays_reservation_id_idx
+    columns: [reservation_id]
+fields:
+  - name: id
+    type: integer
+    nullable: false
+    generated: GENERATED ALWAYS AS IDENTITY
+    notes: Internal surrogate key. Never exposed in public responses.
+  - name: uuid
+    type: uuid
+    nullable: false
+    public_identifier: true
+    default: gen_random_uuid()
+    notes: Server-generated UUID. Not client-supplied; no idempotence guarantee
+      per stay. Idempotence is managed at the reservation level via
+      CreateReservationWithStays.
+  - name: reservation_id
+    type: integer
+    nullable: false
+    notes: FK to reservations(id). Links this stay to its parent reservation.
+  - name: accommodation_option_type_uuid
+    type: uuid
+    nullable: false
+    notes: >
+      Cross-service reference to considered-response's
+      accommodation_option_types. No local FK constraint per I16
+      external_reference_rule.
+  - name: accommodation_option_uuid
+    type: uuid
+    nullable: true
+    notes: >
+      Optional cross-service reference to a concrete sellable option in
+      considered-response. NULL means the stay is not yet allocated to a
+      specific option. No local FK constraint per I16.
+  - name: check_in
+    type: date
+    nullable: false
+  - name: check_out
+    type: date
+    nullable: false
+    constraints:
+      - CHECK (check_out > check_in)
+  - name: created_at
+    type: timestamptz
+    nullable: false
+    default: now()
+  - name: updated_at
+    type: timestamptz
+    nullable: false
+    default: now()
+triggers:
+  - name: set_reservation_stays_updated_at
+    event: BEFORE UPDATE
+    for_each: ROW
+    function: set_updated_at()
+notes:
+  - This table exists in both operational_grace and
+    operational_grace_training schemas with identical structure.
+  - accommodation_option_type_uuid and accommodation_option_uuid are
+    conceptual cross-service references to considered-response. No
+    database FK constraints across service boundaries (I16
+    external_reference_rule).
+  - Stays are created atomically with their parent reservation by
+    CreateReservationWithStays. A stay cannot exist without a reservation.

@@ -59,6 +59,10 @@ export function Unauthenticated(message: string): AppError {
   return new AppError({ status: 401, code: 'unauthenticated', message, retryable: false });
 }
 
+export function Conflict(message: string = 'Conflict', messageParams?: Record<string, unknown>): AppError {
+  return new AppError({ status: 409, code: 'range_conflict', message, retryable: false, messageParams });
+}
+
 export function NotFound(message: string = 'Not found'): AppError {
   return new AppError({ status: 404, code: 'not_found', message, retryable: false });
 }

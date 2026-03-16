@@ -15,6 +15,28 @@ security:
   - BearerAuth: []
 
 paths:
+  /internal/ping:
+    get:
+      operationId: internalPing
+      x-auth-mode: none
+      x-tenant-scope: none
+      x-public-surface: false
+      x-error-envelope: not_applicable
+      summary: Internal connectivity ping
+      tags: [Internal]
+      security: []
+      responses:
+        "200":
+          description: Service is reachable
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok]
+                properties:
+                  ok:
+                    type: boolean
+
   /health/live:
     get:
       operationId: healthLive
@@ -111,6 +133,43 @@ paths:
           $ref: "components/errors.yaml#/components/responses/BadGateway"
         "500":
           $ref: "components/errors.yaml#/components/responses/InternalError"
+    post:
+      operationId: createLiveReservation
+      x-auth-mode: bearer
+      x-tenant-scope: property
+      x-public-surface: false
+      x-error-envelope: components/errors.yaml#/components/schemas/ErrorEnvelope
+      summary: Create a reservation in the live environment
+      description: >
+        Creates a reservation with one or more stays in the live schema. The
+        reservation_uuid is client-supplied for idempotence — repeat requests
+        with the same reservation_uuid are safe. Requires reservations.create
+        permission for the property.
+      tags: [Reservations]
+      parameters:
+        - $ref: "#/components/parameters/PropertyUuid"
+        - $ref: "#/components/parameters/ActorType"
+        - $ref: "#/components/parameters/ActorUserUuid"
+        - $ref: "#/components/parameters/OrganisationUuid"
+        - $ref: "#/components/parameters/PropertyUuidHeader"
+        - $ref: "#/components/parameters/RequestId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateReservationBody"
+      responses:
+        "201":
+          $ref: "#/components/responses/ReservationCreatedResponse"
+        "400":
+          $ref: "components/errors.yaml#/components/responses/BadRequest"
+        "401":
+          $ref: "components/errors.yaml#/components/responses/Unauthenticated"
+        "404":
+          $ref: "components/errors.yaml#/components/responses/NotFound"
+        "500":
+          $ref: "components/errors.yaml#/components/responses/InternalError"
 
   /training/properties/{property_uuid}/reservations:
     get:
@@ -145,6 +204,117 @@ paths:
           $ref: "components/errors.yaml#/components/responses/NotFound"
         "502":
           $ref: "components/errors.yaml#/components/responses/BadGateway"
+        "500":
+          $ref: "components/errors.yaml#/components/responses/InternalError"
+    post:
+      operationId: createTrainingReservation
+      x-auth-mode: bearer
+      x-tenant-scope: property
+      x-public-surface: false
+      x-error-envelope: components/errors.yaml#/components/schemas/ErrorEnvelope
+      summary: Create a reservation in the training environment
+      description: >
+        Creates a reservation with one or more stays in the training schema.
+        Identical behaviour to the live endpoint; data is fully isolated
+        between schemas.
+      tags: [Reservations]
+      parameters:
+        - $ref: "#/components/parameters/PropertyUuid"
+        - $ref: "#/components/parameters/ActorType"
+        - $ref: "#/components/parameters/ActorUserUuid"
+        - $ref: "#/components/parameters/OrganisationUuid"
+        - $ref: "#/components/parameters/PropertyUuidHeader"
+        - $ref: "#/components/parameters/RequestId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateReservationBody"
+      responses:
+        "201":
+          $ref: "#/components/responses/ReservationCreatedResponse"
+        "400":
+          $ref: "components/errors.yaml#/components/responses/BadRequest"
+        "401":
+          $ref: "components/errors.yaml#/components/responses/Unauthenticated"
+        "404":
+          $ref: "components/errors.yaml#/components/responses/NotFound"
+        "500":
+          $ref: "components/errors.yaml#/components/responses/InternalError"
+
+  /live/properties/{property_uuid}/holds:
+    post:
+      operationId: createLiveHold
+      x-auth-mode: bearer
+      x-tenant-scope: property
+      x-public-surface: false
+      x-error-envelope: components/errors.yaml#/components/schemas/ErrorEnvelope
+      summary: Create a hold in the live environment
+      description: >
+        Creates a time-bound inventory hold in the live schema. The hold_uuid is
+        client-supplied for idempotence — repeat requests with the same hold_uuid
+        are safe. Requires reservations.create permission for the property.
+      tags: [Holds]
+      parameters:
+        - $ref: "#/components/parameters/PropertyUuid"
+        - $ref: "#/components/parameters/ActorType"
+        - $ref: "#/components/parameters/ActorUserUuid"
+        - $ref: "#/components/parameters/OrganisationUuid"
+        - $ref: "#/components/parameters/PropertyUuidHeader"
+        - $ref: "#/components/parameters/RequestId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateHoldBody"
+      responses:
+        "201":
+          $ref: "#/components/responses/HoldCreatedResponse"
+        "400":
+          $ref: "components/errors.yaml#/components/responses/BadRequest"
+        "401":
+          $ref: "components/errors.yaml#/components/responses/Unauthenticated"
+        "404":
+          $ref: "components/errors.yaml#/components/responses/NotFound"
+        "500":
+          $ref: "components/errors.yaml#/components/responses/InternalError"
+
+  /training/properties/{property_uuid}/holds:
+    post:
+      operationId: createTrainingHold
+      x-auth-mode: bearer
+      x-tenant-scope: property
+      x-public-surface: false
+      x-error-envelope: components/errors.yaml#/components/schemas/ErrorEnvelope
+      summary: Create a hold in the training environment
+      description: >
+        Creates a time-bound inventory hold in the training schema. Identical
+        behaviour to the live endpoint; data is fully isolated between schemas.
+      tags: [Holds]
+      parameters:
+        - $ref: "#/components/parameters/PropertyUuid"
+        - $ref: "#/components/parameters/ActorType"
+        - $ref: "#/components/parameters/ActorUserUuid"
+        - $ref: "#/components/parameters/OrganisationUuid"
+        - $ref: "#/components/parameters/PropertyUuidHeader"
+        - $ref: "#/components/parameters/RequestId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateHoldBody"
+      responses:
+        "201":
+          $ref: "#/components/responses/HoldCreatedResponse"
+        "400":
+          $ref: "components/errors.yaml#/components/responses/BadRequest"
+        "401":
+          $ref: "components/errors.yaml#/components/responses/Unauthenticated"
+        "404":
+          $ref: "components/errors.yaml#/components/responses/NotFound"
         "500":
           $ref: "components/errors.yaml#/components/responses/InternalError"
 
@@ -228,6 +398,64 @@ components:
         type: string
       description: Correlation ID for distributed tracing
 
+  schemas:
+    CreateReservationBody:
+      type: object
+      required: [reservation_uuid, guest_name, stays]
+      properties:
+        reservation_uuid:
+          type: string
+          format: uuid
+          description: Client-supplied UUID for idempotence — safe to retry with the same value.
+        guest_name:
+          type: string
+          minLength: 1
+        stays:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required: [accommodation_option_type_uuid, check_in, check_out]
+            properties:
+              accommodation_option_type_uuid:
+                type: string
+                format: uuid
+              accommodation_option_uuid:
+                type: string
+                format: uuid
+                nullable: true
+              check_in:
+                type: string
+                format: date
+              check_out:
+                type: string
+                format: date
+
+    CreateHoldBody:
+      type: object
+      required: [hold_uuid, expires_at, accommodation_option_type_uuid, check_in, check_out]
+      properties:
+        hold_uuid:
+          type: string
+          format: uuid
+          description: Client-supplied UUID for idempotence — safe to retry with the same value.
+        expires_at:
+          type: string
+          format: date-time
+        accommodation_option_type_uuid:
+          type: string
+          format: uuid
+        accommodation_option_uuid:
+          type: string
+          format: uuid
+          nullable: true
+        check_in:
+          type: string
+          format: date
+        check_out:
+          type: string
+          format: date
+
   responses:
     ReservationListResponse:
       description: Paginated list of reservation UUIDs
@@ -250,3 +478,53 @@ components:
                 type: string
                 nullable: true
                 description: Opaque cursor for the next page; null if no further results
+
+    ReservationCreatedResponse:
+      description: Reservation created
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [reservation_uuid, was_existing]
+            properties:
+              reservation_uuid:
+                type: string
+                format: uuid
+              was_existing:
+                type: boolean
+                description: True if the reservation already existed (idempotent replay).
+
+    HoldCreatedResponse:
+      description: Hold created
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [hold]
+            properties:
+              hold:
+                type: object
+                required: [uuid, property_uuid, accommodation_option_type_uuid, check_in, check_out, expires_at]
+                properties:
+                  uuid:
+                    type: string
+                    format: uuid
+                  property_uuid:
+                    type: string
+                    format: uuid
+                  accommodation_option_type_uuid:
+                    type: string
+                    format: uuid
+                  accommodation_option_uuid:
+                    type: string
+                    format: uuid
+                    nullable: true
+                  check_in:
+                    type: string
+                    format: date
+                  check_out:
+                    type: string
+                    format: date
+                  expires_at:
+                    type: string
+                    format: date-time

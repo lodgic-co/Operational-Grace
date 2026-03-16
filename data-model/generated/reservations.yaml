@@ -41,6 +41,13 @@ fields:
       belongs to. Not a foreign key to a local properties table; property
       identity is owned by considered-response. This value is the boundary
       identifier supplied by the caller.
+  - name: guest_name
+    type: text
+    nullable: false
+    notes: >
+      Name of the guest for this reservation. Added in migration
+      202603120001_add-guest-name-to-reservations. Backfilled to empty
+      string on existing rows at migration time, then set NOT NULL.
   - name: created_at
     type: timestamptz
     nullable: false

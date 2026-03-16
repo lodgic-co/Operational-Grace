@@ -41,10 +41,12 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@types/js-yaml": "^4.0.9",
     "@types/node": "^25.4.0",
     "@types/pg": "^8.18.0",
     "@types/supertest": "^7.2.0",
     "eslint": "^10.0.3",
+    "js-yaml": "^4.1.1",
     "prettier": "^3.8.1",
     "supertest": "^7.2.2",
     "tsx": "^4.21.0",

@@ -1,0 +1,58 @@
+procedure_name: CreateHoldRoute
+procedure_kind: route_orchestration
+identifier_mode: boundary_resolving
+owning_service: operational-grace
+naming_deviation_note: >
+  Uses 'Create' prefix as a route orchestration procedure. Exempt from the
+  single governed naming verb requirement per the decision-procedure-generation-model.
+purpose: >
+  HTTP route behaviour for POST /{env}/properties/:property_uuid/holds.
+  Validates input, enforces delegated actor context and property-scoped
+  permission, and delegates to CreateHold. Returns 201 on success.
+
+  The environment is a TypeScript literal bound at registration — not
+  parsed at request time — per M37/I15.
+source_files:
+  - src/routes/holds.ts
+  - src/domain/procedures.ts
+used_by:
+  - src/http/app.ts (registered twice — once under /live and once under
+    /training prefix with hardcoded environment literals)
+caller_context: >
+  Called by polite-intervention as the downstream domain authority for
+  hold creation.
+inputs:
+  - property_uuid (path parameter UUID)
+  - environment ('live' | 'training' — literal bound at registration)
+  - hold_uuid (body UUID — client idempotence key)
+  - expires_at (body datetime string)
+  - accommodation_option_type_uuid (body UUID)
+  - accommodation_option_uuid (body UUID | null, optional)
+  - check_in (body ISO date YYYY-MM-DD)
+  - check_out (body ISO date YYYY-MM-DD)
+  - X-Actor-User-Uuid, X-Organisation-Uuid, X-Property-Uuid (delegated
+    actor headers)
+  - X-Request-Id (optional)
+outputs:
+  - 201 with { hold: HoldRow } body
+preconditions:
+  - X-Property-Uuid must be present and match property_uuid path parameter.
+  - check_out must be strictly greater than check_in.
+decision_logic:
+  - Validate property_uuid via Zod paramsSchema.
+  - Validate body via createHoldBodySchema.
+  - Parse delegated actor; if null, throw InvalidRequest.
+  - Validate X-Property-Uuid matches property_uuid.
+  - Set request telemetry fields.
+  - Call AssertPropertyPermission with 'reservations.create'.
+  - Call CreateHold; return 201 with { hold }.
+error_behaviour:
+  - invalid_request (400) — param/body validation failure or missing
+    X-Property-Uuid.
+  - not_found (404) — AssertPropertyPermission denial (non-leakage).
+  - bad_gateway (502) — measured-judgement unreachable.
+  - internal_error (500) — unexpected database error.
+data_dependencies:
+  - Delegated to underlying procedures.
+side_effects: >
+  Inserts zero or one row into holds (zero on idempotent replay).

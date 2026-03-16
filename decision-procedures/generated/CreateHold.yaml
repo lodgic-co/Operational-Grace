@@ -1,0 +1,83 @@
+procedure_name: CreateHold
+procedure_kind: domain
+identifier_mode: boundary_resolving
+owning_service: operational-grace
+purpose: >
+  Flat create procedure for a hold. Owns its own transaction boundary.
+  Idempotence is enforced via UNIQUE (uuid) ON CONFLICT (uuid) DO NOTHING.
+  Returns the hold record and a was_existing flag.
+
+  BEGIN → INSERT holds ON CONFLICT (uuid) DO NOTHING → SELECT → COMMIT.
+  Any failure → ROLLBACK.
+
+  Implements the create procedure taxonomy per I16: new entity creation,
+  owns the transaction, client-supplied UUID for idempotence.
+source_files:
+  - src/domain/procedures.ts
+used_by:
+  - src/routes/holds.ts
+caller_context: >
+  Called by the POST /properties/:property_uuid/holds route handler after
+  delegated actor validation and AssertPropertyPermission have passed.
+inputs:
+  - environment ('live' | 'training' — TypeScript literal)
+  - livePool (Pool)
+  - trainingPool (Pool)
+  - holdUuid (string UUID — client-supplied idempotence key)
+  - propertyUuid (string UUID — tenant scoping identifier; cross-service
+    reference to considered-response, no local FK per I16)
+  - accommodationOptionTypeUuid (string UUID — cross-service reference to
+    considered-response; no local FK per I16)
+  - accommodationOptionUuid (string UUID | null — optional concrete
+    allocation; null = unallocated)
+  - checkIn (string ISO date YYYY-MM-DD)
+  - checkOut (string ISO date YYYY-MM-DD — must be > checkIn)
+  - expiresAt (string ISO 8601 datetime — hold expiry timestamp)
+outputs:
+  - hold (HoldRow — uuid, property_uuid, accommodation_option_type_uuid,
+    accommodation_option_uuid, check_in, check_out, expires_at, created_at)
+  - was_existing (boolean)
+preconditions:
+  - checkOut must be strictly greater than checkIn; InvalidRequest if not.
+  - No active transaction on entry — this procedure opens its own.
+decision_logic:
+  - Validate checkOut > checkIn; throw InvalidRequest if not.
+  - Call ResolveEnvironmentSchema to obtain the environment-scoped pool.
+  - Acquire a connection and BEGIN.
+  - INSERT INTO holds (uuid, property_uuid, accommodation_option_type_uuid,
+    accommodation_option_uuid, check_in, check_out, expires_at)
+    ON CONFLICT (uuid) DO NOTHING.
+  - was_existing = (insertResult.rowCount === 0).
+  - SELECT the hold row by uuid (works for both new and pre-existing).
+  - COMMIT; return { hold, was_existing }.
+  - On any error: ROLLBACK and re-throw.
+relationship_traversal:
+  - ResolveEnvironmentSchema — pool selection by environment literal. No DB.
+  - INSERT holds with ON CONFLICT (uuid) DO NOTHING.
+  - SELECT holds WHERE uuid = holdUuid — returns the hold regardless of
+    whether it was just inserted or already existed.
+scoping_constraints:
+  - Tenant scope is property via propertyUuid; no local property resolution.
+  - Environment scope is determined by ResolveEnvironmentSchema.
+  - All UUID references to considered-response entities are conceptual
+    cross-service references with no local FK constraints (I16).
+set_semantics:
+  - After this call, exactly one holds row with the given uuid exists.
+  - was_existing=true means the row already existed before this call.
+error_behaviour:
+  - invalid_request (400) — checkOut <= checkIn.
+  - Database errors → ROLLBACK and re-throw as internal_error.
+data_dependencies:
+  - operational_grace.holds (write — INSERT ON CONFLICT DO NOTHING, then
+    SELECT)
+side_effects: >
+  Inserts zero or one row into holds depending on whether the uuid already
+  exists.
+invariants:
+  - Client-supplied UUID idempotence: repeated calls with the same holdUuid
+    are safe and produce the same hold row.
+  - property_uuid and accommodation_option_type_uuid are cross-service
+    references; validity is not enforced locally.
+default_outcome: >
+  Returns the HoldRow and was_existing=false for a new hold, or
+  was_existing=true for an idempotent replay.

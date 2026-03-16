@@ -1,0 +1,83 @@
+procedure_name: CreateReservationWithStays
+procedure_kind: domain
+identifier_mode: boundary_resolving
+owning_service: operational-grace
+purpose: >
+  Orchestrating create procedure that owns the full transaction boundary
+  for a reservation and all its stays. Calls CreateReservation and
+  CreateReservationStay as sub-procedures within a single transaction.
+
+  Idempotence: if was_existing=true (reservation UUID already existed),
+  the existing reservation and its stays are returned without inserting
+  new rows. BEGIN → CreateReservation → N × CreateReservationStay → COMMIT.
+  Any failure → ROLLBACK. Partial writes are not possible.
+
+  Implements the create procedure taxonomy per I16: orchestrating create
+  that owns the transaction, client-supplied UUID for idempotence.
+source_files:
+  - src/domain/procedures.ts
+used_by:
+  - src/routes/reservations.ts
+caller_context: >
+  Called by the POST /properties/:property_uuid/reservations route handler
+  after delegated actor validation and AssertPropertyPermission have passed.
+inputs:
+  - environment ('live' | 'training' — TypeScript literal, not request-derived)
+  - livePool (Pool)
+  - trainingPool (Pool)
+  - reservationUuid (string UUID — client-supplied idempotence key)
+  - propertyUuid (string UUID — tenant scoping identifier)
+  - guestName (string — non-empty)
+  - stays (StayInput[] — array of stay descriptors, min length 1)
+outputs:
+  - CreateReservationResult (reservation: { uuid, property_uuid, guest_name,
+    created_at }, stays: StayRow[])
+preconditions:
+  - stays must be non-empty (enforced by pre-check; InvalidRequest if empty).
+  - All stays must have check_out > check_in (enforced by pre-check).
+  - No active transaction on entry — this procedure opens its own.
+decision_logic:
+  - Validate stays.length >= 1; throw InvalidRequest if empty.
+  - Validate check_out > check_in for all stays; throw InvalidRequest on
+    any violation.
+  - Call ResolveEnvironmentSchema to obtain the environment-scoped pool.
+  - Acquire a connection and BEGIN.
+  - Call CreateReservation(trx, reservationUuid, propertyUuid, guestName).
+  - If was_existing=true: SELECT existing stays from reservation_stays by
+    reservation_id; skip stay inserts.
+  - If was_existing=false: call CreateReservationStay once per stay input.
+  - COMMIT; return { reservation, stays }.
+  - On any error: ROLLBACK and re-throw.
+relationship_traversal:
+  - ResolveEnvironmentSchema — selects pool by environment literal. No DB.
+  - CreateReservation — INSERT reservations ON CONFLICT (uuid) DO NOTHING,
+    then SELECT. Constraining identifier: reservationUuid (UNIQUE).
+  - CreateReservationStay — INSERT reservation_stays N times within the
+    same transaction. reservation_id FK links stays to the reservation.
+  - Idempotent replay — SELECT reservation_stays WHERE reservation_id = id
+    to return existing stays without re-inserting.
+scoping_constraints:
+  - Tenant scope is property via propertyUuid (passed through to reservations
+    table; no local property resolution performed here).
+  - Environment scope is determined by ResolveEnvironmentSchema from the
+    TypeScript literal — not from any request input.
+set_semantics:
+  - Atomically creates one reservation and N stays in a single transaction.
+  - Idempotent: repeated calls with the same reservationUuid return the
+    same reservation and its original stays.
+error_behaviour:
+  - invalid_request (400) — empty stays array or check_out <= check_in.
+  - Database errors → ROLLBACK and re-throw as internal_error.
+data_dependencies:
+  - operational_grace.reservations (via CreateReservation)
+  - operational_grace.reservation_stays (via CreateReservationStay)
+side_effects: >
+  Inserts one reservation row and N stay rows atomically in a single
+  transaction, or zero rows on idempotent replay.
+invariants:
+  - A reservation and all its stays are created atomically. Partial writes
+    are not possible.
+  - Client-supplied UUID idempotence: repeated calls with the same
+    reservationUuid always return the same reservation.
+default_outcome: >
+  Returns the CreateReservationResult with the reservation and its stays.
