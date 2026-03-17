@@ -29,9 +29,11 @@ inputs:
     must be >= reservation check_in, validated upstream)
   - endDate (string ISO date YYYY-MM-DD — stay segment end, exclusive;
     must be > startDate and <= reservation check_out, validated upstream)
+  - adultCount (integer | null — optional number of adults for this stay
+    segment; null means no adult count specified)
 outputs:
   - StayRow (uuid, reservation_id, accommodation_option_type_uuid,
-    accommodation_option_uuid, start_date, end_date, created_at)
+    accommodation_option_uuid, start_date, end_date, adult_count, created_at)
 preconditions:
   - A transaction must be active on trx.
   - reservationId must be the internal primary key of an existing reservation.
@@ -40,9 +42,9 @@ preconditions:
     (enforced upstream by CreateReservationWithStays).
 decision_logic:
   - INSERT INTO reservation_stays (reservation_id, accommodation_option_type_uuid,
-    accommodation_option_uuid, start_date, end_date) VALUES ($1, $2::uuid, $3,
-    $4::date, $5::date) RETURNING all fields including server-generated uuid
-    and created_at.
+    accommodation_option_uuid, start_date, end_date, adult_count) VALUES ($1,
+    $2::uuid, $3, $4::date, $5::date, $6) RETURNING all fields including
+    server-generated uuid, adult_count, and created_at.
   - Return the RETURNING row as StayRow.
 relationship_traversal:
   - INSERT into reservation_stays with reservation_id FK to reservations(id).

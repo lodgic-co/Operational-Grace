@@ -69,6 +69,13 @@ fields:
       Renamed from check_out in migration 202603160105.
     constraints:
       - CHECK (end_date > start_date)
+  - name: adult_count
+    type: integer
+    nullable: true
+    notes: >
+      Optional number of adults assigned to this stay segment. NULL means no
+      adult count has been specified for this allocation. Added in migration
+      202603170001. No minimum constraint enforced at the database level.
   - name: created_at
     type: timestamptz
     nullable: false

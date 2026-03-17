@@ -30,6 +30,7 @@ const staySchema = z.object({
   accommodation_option_uuid: z.string().regex(UUID_REGEX).nullable().optional(),
   start_date: z.string().regex(ISO_DATE_REGEX, 'start_date must be an ISO date'),
   end_date: z.string().regex(ISO_DATE_REGEX, 'end_date must be an ISO date'),
+  adult_count: z.number().int().nullable().optional(),
 });
 
 const createReservationBodySchema = z.object({
@@ -161,6 +162,7 @@ export async function reservationRoutes(
       accommodation_option_uuid: s.accommodation_option_uuid ?? null,
       start_date: s.start_date,
       end_date: s.end_date,
+      adult_count: s.adult_count ?? null,
     }));
 
     const result = await CreateReservationWithStays(

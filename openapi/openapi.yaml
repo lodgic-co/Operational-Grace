@@ -452,6 +452,12 @@ components:
                 type: string
                 format: date
                 description: End of this stay segment. Exclusive. Must be <= reservation check_out.
+              adult_count:
+                type: integer
+                nullable: true
+                description: >
+                  Optional number of adults assigned to this stay segment. Null means
+                  no adult count has been specified.
 
     CreateHoldBody:
       type: object
@@ -555,6 +561,10 @@ components:
                     end_date:
                       type: string
                       format: date
+                    adult_count:
+                      type: integer
+                      nullable: true
+                      description: Number of adults for this stay segment, or null if not specified.
                     created_at:
                       type: string
                       format: date-time
