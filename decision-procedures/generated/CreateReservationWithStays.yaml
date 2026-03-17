@@ -32,8 +32,7 @@ inputs:
   - checkOut (string ISO date YYYY-MM-DD — reservation booking envelope end, exclusive)
   - stays (StayInput[] — array of stay descriptors, min length 1; each with
     accommodation_option_type_uuid, accommodation_option_uuid nullable,
-    accommodation_unit_uuid nullable UUID, start_date, end_date,
-    adult_count nullable integer)
+    start_date, end_date, adult_count nullable integer)
 outputs:
   - CreateReservationResult (was_existing: boolean, reservation: { uuid,
     property_uuid, guest_name, check_in, check_out, created_at },
@@ -57,10 +56,9 @@ decision_logic:
   - Call CreateReservation(trx, reservationUuid, propertyUuid, guestName,
     checkIn, checkOut).
   - If was_existing=true: SELECT existing stays from reservation_stays by
-    reservation_id including accommodation_unit_uuid, start_date, end_date,
-    and adult_count; skip stay inserts.
+    reservation_id; skip stay inserts.
   - If was_existing=false: call CreateReservationStay once per stay input
-    passing accommodation_unit_uuid, start_date, end_date, and adult_count.
+    passing start_date, end_date, and adult_count.
   - COMMIT; return { was_existing, reservation, stays }.
   - On any error: ROLLBACK and re-throw.
 relationship_traversal:
@@ -102,8 +100,6 @@ invariants:
     start_date/end_date ranges must lie within this envelope.
   - Stay ranges do not need to be contiguous — gaps are permitted.
   - Date semantics: start inclusive, end exclusive throughout.
-  - accommodation_unit_uuid is optional per stay; null means no specific
-    physical unit has been assigned. Applicable for non-composite option types.
   - adult_count is optional per stay; null means no adult count specified.
     No minimum or maximum value is enforced at the procedure level.
 default_outcome: >

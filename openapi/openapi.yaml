@@ -444,14 +444,6 @@ components:
                 description: >
                   Optional allocation to a concrete sellable option. Null means the
                   stay is unallocated.
-              accommodation_unit_uuid:
-                type: string
-                format: uuid
-                nullable: true
-                description: >
-                  Optional allocation to a specific physical accommodation unit.
-                  Applicable for non-composite option types. Null means no specific
-                  unit has been assigned.
               start_date:
                 type: string
                 format: date
@@ -563,11 +555,6 @@ components:
                       type: string
                       format: uuid
                       nullable: true
-                    accommodation_unit_uuid:
-                      type: string
-                      format: uuid
-                      nullable: true
-                      description: Specific physical unit allocated for this stay, or null if unassigned.
                     start_date:
                       type: string
                       format: date

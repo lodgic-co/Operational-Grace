@@ -28,7 +28,6 @@ const ISO_DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
 const staySchema = z.object({
   accommodation_option_type_uuid: z.string().regex(UUID_REGEX),
   accommodation_option_uuid: z.string().regex(UUID_REGEX).nullable().optional(),
-  accommodation_unit_uuid: z.string().regex(UUID_REGEX).nullable().optional(),
   start_date: z.string().regex(ISO_DATE_REGEX, 'start_date must be an ISO date'),
   end_date: z.string().regex(ISO_DATE_REGEX, 'end_date must be an ISO date'),
   adult_count: z.number().int().nullable().optional(),
@@ -161,7 +160,6 @@ export async function reservationRoutes(
     const stayInputs: StayInput[] = stays.map((s) => ({
       accommodation_option_type_uuid: s.accommodation_option_type_uuid,
       accommodation_option_uuid: s.accommodation_option_uuid ?? null,
-      accommodation_unit_uuid: s.accommodation_unit_uuid ?? null,
       start_date: s.start_date,
       end_date: s.end_date,
       adult_count: s.adult_count ?? null,

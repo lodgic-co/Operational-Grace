@@ -24,7 +24,6 @@ export interface StayRow {
   reservation_id: number;
   accommodation_option_type_uuid: string;
   accommodation_option_uuid: string | null;
-  accommodation_unit_uuid: string | null;
   start_date: string;
   end_date: string;
   adult_count: number | null;
@@ -80,7 +79,6 @@ export async function CreateReservationStay(
   reservationId: number,
   accommodationOptionTypeUuid: string,
   accommodationOptionUuid: string | null,
-  accommodationUnitUuid: string | null,
   startDate: string,
   endDate: string,
   adultCount: number | null,
@@ -88,20 +86,19 @@ export async function CreateReservationStay(
   const result = await trx.query(
     `INSERT INTO reservation_stays
        (reservation_id, accommodation_option_type_uuid, accommodation_option_uuid,
-        accommodation_unit_uuid, start_date, end_date, adult_count)
-     VALUES ($1, $2::uuid, $3, $4, $5::date, $6::date, $7)
+        start_date, end_date, adult_count)
+     VALUES ($1, $2::uuid, $3, $4::date, $5::date, $6)
      RETURNING
        uuid,
        reservation_id,
        accommodation_option_type_uuid,
        accommodation_option_uuid,
-       accommodation_unit_uuid,
        start_date::text,
        end_date::text,
        adult_count,
        to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS created_at`,
     [reservationId, accommodationOptionTypeUuid, accommodationOptionUuid ?? null,
-     accommodationUnitUuid ?? null, startDate, endDate, adultCount ?? null],
+     startDate, endDate, adultCount ?? null],
   );
   return result.rows[0] as StayRow;
 }
@@ -109,7 +106,6 @@ export async function CreateReservationStay(
 export interface StayInput {
   accommodation_option_type_uuid: string;
   accommodation_option_uuid?: string | null;
-  accommodation_unit_uuid?: string | null;
   start_date: string;
   end_date: string;
   adult_count?: number | null;
@@ -192,7 +188,7 @@ export async function CreateReservationWithStays(
     if (was_existing) {
       const existing = await trx.query(
         `SELECT uuid, reservation_id, accommodation_option_type_uuid, accommodation_option_uuid,
-                accommodation_unit_uuid, start_date::text, end_date::text, adult_count,
+                start_date::text, end_date::text, adult_count,
                 to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS created_at
          FROM reservation_stays
          WHERE reservation_id = $1`,
@@ -207,7 +203,6 @@ export async function CreateReservationWithStays(
           reservation.id,
           stay.accommodation_option_type_uuid,
           stay.accommodation_option_uuid ?? null,
-          stay.accommodation_unit_uuid ?? null,
           stay.start_date,
           stay.end_date,
           stay.adult_count ?? null,
