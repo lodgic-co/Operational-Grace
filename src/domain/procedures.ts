@@ -120,7 +120,7 @@ export async function FetchOgBundle(
     room_stay_adults: string;
   }>(
     `SELECT rs.accommodation_option_type_uuid,
-            d.inventory_night::text,
+            d.inventory_night::date::text,
             COUNT(*)::text              AS room_stay_count,
             COALESCE(SUM(rs.adult_count), 0)::text AS room_stay_adults
      FROM   reservation_stays rs
@@ -138,7 +138,7 @@ export async function FetchOgBundle(
     active_hold_adults: string;
   }>(
     `SELECT h.accommodation_option_type_uuid,
-            d.inventory_night::text,
+            d.inventory_night::date::text,
             COUNT(*)::text              AS active_hold_count,
             COALESCE(SUM(h.adult_count), 0)::text AS active_hold_adults
      FROM   holds h
@@ -201,7 +201,7 @@ export async function FetchOgBundle(
        FROM (
          SELECT rs.accommodation_option_uuid    AS ao_uuid,
                 rs.accommodation_option_type_uuid AS aot_uuid,
-                d.inventory_night::text,
+                d.inventory_night::date::text,
                 'stay' AS source
          FROM   reservation_stays rs
          CROSS JOIN generate_series(rs.start_date, rs.end_date - interval '1 day', '1 day') AS d(inventory_night)
@@ -213,7 +213,7 @@ export async function FetchOgBundle(
 
          SELECT h.accommodation_option_uuid,
                 h.accommodation_option_type_uuid,
-                d.inventory_night::text,
+                d.inventory_night::date::text,
                 'hold'
          FROM   holds h
          CROSS JOIN generate_series(h.check_in, h.check_out - interval '1 day', '1 day') AS d(inventory_night)
@@ -245,7 +245,7 @@ export async function FetchOgBundle(
       unallocated_adults: string;
     }>(
       `SELECT rs.accommodation_option_type_uuid,
-              d.inventory_night::text,
+              d.inventory_night::date::text,
               COUNT(*)::text              AS unallocated_count,
               COALESCE(SUM(rs.adult_count), 0)::text AS unallocated_adults
        FROM   reservation_stays rs
@@ -264,7 +264,7 @@ export async function FetchOgBundle(
       unallocated_adults: string;
     }>(
       `SELECT h.accommodation_option_type_uuid,
-              d.inventory_night::text,
+              d.inventory_night::date::text,
               COUNT(*)::text              AS unallocated_count,
               COALESCE(SUM(h.adult_count), 0)::text AS unallocated_adults
        FROM   holds h
@@ -316,7 +316,7 @@ export async function FetchOgBundle(
       inventory_night: string;
       property_has_any_occupancy: boolean;
     }>(
-      `SELECT d.inventory_night::text,
+      `SELECT d.inventory_night::date::text,
               EXISTS (
                 SELECT 1
                 FROM   reservation_stays rs
