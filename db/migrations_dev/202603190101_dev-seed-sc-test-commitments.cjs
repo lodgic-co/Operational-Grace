@@ -102,7 +102,8 @@ module.exports.up = (pgm) => {
 
   // -------------------------------------------------------------------------
   // Reservation stays
-  // start_date/end_date are allocation dates (renamed from check_in/check_out).
+  // start_date/end_date are stay nights — both dates inclusive.
+  // end_date is the last night of the stay; must be before reservation check_out.
   // AOT and AO UUIDs are cross-service references; no DB FK (I16).
   // -------------------------------------------------------------------------
   pgm.sql(`
@@ -110,33 +111,33 @@ module.exports.up = (pgm) => {
       (reservation_id, accommodation_option_type_uuid, accommodation_option_uuid,
        start_date, end_date, adult_count)
     VALUES
-      -- R1: Ocean View Double A, 3 nights (06-10, 06-11, 06-12)
+      -- R1: Ocean View Double A, last night 06-12 (stays: 06-10, 06-11, 06-12)
       ((SELECT id FROM reservations WHERE uuid = '${R1}'),
-       '${SC_AOT_STD}', '${SC_AO_STD_A}', '2026-06-10', '2026-06-13', 2),
+       '${SC_AOT_STD}', '${SC_AO_STD_A}', '2026-06-10', '2026-06-12', 2),
 
-      -- R2: Ocean View Double B, 2 nights (06-10, 06-11) — overlaps R1 on both
+      -- R2: Ocean View Double B, last night 06-11 (stays: 06-10, 06-11) — overlaps R1 on both
       ((SELECT id FROM reservations WHERE uuid = '${R2}'),
-       '${SC_AOT_STD}', '${SC_AO_STD_B}', '2026-06-10', '2026-06-12', 2),
+       '${SC_AOT_STD}', '${SC_AO_STD_B}', '2026-06-10', '2026-06-11', 2),
 
       -- R3: Dorm Bed, 1 night (06-20), 4 adults
       ((SELECT id FROM reservations WHERE uuid = '${R3}'),
-       '${SC_AOT_DORM}', '${SC_AO_DORM}', '2026-06-20', '2026-06-21', 4),
+       '${SC_AOT_DORM}', '${SC_AO_DORM}', '2026-06-20', '2026-06-20', 4),
 
-      -- R4: Dorm Bed, 2 nights (06-21, 06-22), 2 adults — no overlap with R3
+      -- R4: Dorm Bed, last night 06-22 (stays: 06-21, 06-22), 2 adults — no overlap with R3
       ((SELECT id FROM reservations WHERE uuid = '${R4}'),
-       '${SC_AOT_DORM}', '${SC_AO_DORM}', '2026-06-21', '2026-06-23', 2),
+       '${SC_AOT_DORM}', '${SC_AO_DORM}', '2026-06-21', '2026-06-22', 2),
 
-      -- R5: Full Cottage Suite (composite AO), 3 nights (07-01, 07-02, 07-03)
+      -- R5: Full Cottage Suite (composite AO), last night 07-03 (stays: 07-01, 07-02, 07-03)
       ((SELECT id FROM reservations WHERE uuid = '${R5}'),
-       '${SC_AOT_SUITE}', '${SC_AO_SUITE}', '2026-07-01', '2026-07-04', 2),
+       '${SC_AOT_SUITE}', '${SC_AO_SUITE}', '2026-07-01', '2026-07-03', 2),
 
-      -- R6: Family Room (per_unit dual peer), 2 nights (07-10, 07-11)
+      -- R6: Family Room (per_unit dual peer), last night 07-11 (stays: 07-10, 07-11)
       ((SELECT id FROM reservations WHERE uuid = '${R6}'),
-       '${SC_AOT_FAM_U}', '${SC_AO_FAM_U}', '2026-07-10', '2026-07-12', 2),
+       '${SC_AOT_FAM_U}', '${SC_AO_FAM_U}', '2026-07-10', '2026-07-11', 2),
 
       -- R7: Family Bed (per_bed dual peer), 1 night (07-10), 2 adults
       ((SELECT id FROM reservations WHERE uuid = '${R7}'),
-       '${SC_AOT_FAM_B}', '${SC_AO_FAM_B}', '2026-07-10', '2026-07-11', 2)
+       '${SC_AOT_FAM_B}', '${SC_AO_FAM_B}', '2026-07-10', '2026-07-10', 2)
     ON CONFLICT DO NOTHING
   `);
 

@@ -124,7 +124,7 @@ export async function FetchOgBundle(
             COUNT(*)::text              AS room_stay_count,
             COALESCE(SUM(rs.adult_count), 0)::text AS room_stay_adults
      FROM   reservation_stays rs
-     CROSS JOIN generate_series(rs.start_date, rs.end_date - interval '1 day', '1 day') AS d(inventory_night)
+     CROSS JOIN generate_series(rs.start_date, rs.end_date, '1 day') AS d(inventory_night)
      WHERE  rs.accommodation_option_type_uuid = ANY($1::uuid[])
        AND  d.inventory_night BETWEEN $2::date AND $3::date
      GROUP BY rs.accommodation_option_type_uuid, d.inventory_night`,
@@ -204,7 +204,7 @@ export async function FetchOgBundle(
                 d.inventory_night::date::text,
                 'stay' AS source
          FROM   reservation_stays rs
-         CROSS JOIN generate_series(rs.start_date, rs.end_date - interval '1 day', '1 day') AS d(inventory_night)
+         CROSS JOIN generate_series(rs.start_date, rs.end_date, '1 day') AS d(inventory_night)
          WHERE  rs.accommodation_option_uuid IS NOT NULL
            AND  rs.accommodation_option_type_uuid = ANY($1::uuid[])
            AND  d.inventory_night BETWEEN $2::date AND $3::date
@@ -249,7 +249,7 @@ export async function FetchOgBundle(
               COUNT(*)::text              AS unallocated_count,
               COALESCE(SUM(rs.adult_count), 0)::text AS unallocated_adults
        FROM   reservation_stays rs
-       CROSS JOIN generate_series(rs.start_date, rs.end_date - interval '1 day', '1 day') AS d(inventory_night)
+       CROSS JOIN generate_series(rs.start_date, rs.end_date, '1 day') AS d(inventory_night)
        WHERE  rs.accommodation_option_uuid IS NULL
          AND  rs.accommodation_option_type_uuid = ANY($1::uuid[])
          AND  d.inventory_night BETWEEN $2::date AND $3::date
@@ -321,7 +321,7 @@ export async function FetchOgBundle(
                 SELECT 1
                 FROM   reservation_stays rs
                 JOIN   reservations r ON r.id = rs.reservation_id
-                CROSS JOIN generate_series(rs.start_date, rs.end_date - interval '1 day', '1 day') AS n(night)
+                CROSS JOIN generate_series(rs.start_date, rs.end_date, '1 day') AS n(night)
                 WHERE  r.property_uuid = $1::uuid
                   AND  n.night = d.inventory_night
 
@@ -505,14 +505,14 @@ export async function CreateReservationWithStays(
   }
 
   for (const stay of stays) {
-    if (stay.end_date <= stay.start_date) {
-      throw InvalidRequest('stay end_date must be greater than start_date');
+    if (stay.end_date < stay.start_date) {
+      throw InvalidRequest('stay end_date must not be before start_date');
     }
     if (stay.start_date < checkIn) {
       throw InvalidRequest('stay start_date must not be before reservation check_in');
     }
-    if (stay.end_date > checkOut) {
-      throw InvalidRequest('stay end_date must not be after reservation check_out');
+    if (stay.end_date >= checkOut) {
+      throw InvalidRequest('stay end_date must be before reservation check_out');
     }
   }
 
