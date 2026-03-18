@@ -1,0 +1,33 @@
+procedure_name: AssertServiceCapability
+procedure_kind: domain
+procedure_taxonomy: read
+owning_service: operational-grace
+purpose: >
+  Asserts that the caller identified by callerServiceId holds the given service
+  capability, per the startup-time capability allowlist map. Enforces service-to-service
+  authority on capability-protected routes without making a runtime MJ call.
+source_files:
+  - src/domain/procedures.ts
+  - src/routes/bundles.ts
+caller_context: >
+  Called by POST /bundles/occupancy route handler immediately after JWT validation,
+  before any domain logic. Receives callerServiceId from request.callerServiceId
+  (populated by verifyServiceToken).
+inputs:
+  - capabilityKey (string): the capability to assert (e.g. inventory.occupancy.bundle.read)
+  - callerServiceId (string): the azp claim from the caller's M2M token
+  - capabilityAllowlistMap (ReadonlyMap<string, ReadonlySet<string>>): startup-time map
+    built from MJ GET /service-authorities/grants
+decision_logic:
+  - Look up capabilityKey in capabilityAllowlistMap.
+  - If not found, throw Unauthenticated (401).
+  - If found, check callerServiceId is in the Set.
+  - If not in Set, throw Unauthenticated (401).
+  - If in Set, return void (caller is authorised).
+error_behaviour:
+  - unauthenticated (401): capability key not in map, or callerServiceId not in the
+    allowlist set for the capability.
+  - No MJ call is made. No 404 is thrown. Auth failure always maps to 401.
+invariants:
+  - No I/O. Pure in-memory check against the startup-loaded map.
+side_effects: none

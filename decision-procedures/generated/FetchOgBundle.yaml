@@ -1,0 +1,44 @@
+procedure_name: FetchOgBundle
+procedure_kind: domain
+procedure_taxonomy: read
+owning_service: operational-grace
+purpose: >
+  Assembles and returns the full OgBundle for a rebuild scope. Called by SC
+  via POST /bundles/occupancy (capability: inventory.occupancy.bundle.read).
+  Queries the appropriate environment schema (live/training) for occupancy data
+  derived from reservation_stays and holds.
+source_files:
+  - src/domain/procedures.ts
+  - src/routes/bundles.ts
+caller_context: >
+  Called after AssertServiceCapability confirms the caller holds
+  inventory.occupancy.bundle.read. No delegated actor context is present.
+  Environment (live/training) is caller-supplied and used to select the pool.
+inputs:
+  - propertyUuid (string UUID, required)
+  - from (string ISO date, required)
+  - to (string ISO date, required)
+  - expandedAotUuids (string[]): all AOT UUIDs in the OG rebuild scope
+  - compositeAndDualModeAotUuids (string[]): AOTs needing og_state_by_ao query
+  - dualModeAotUuids (string[]): AOTs needing unallocated_by_aot_and_date query
+  - hasExclusiveUseAots (boolean): whether to run property_has_any_occupancy_by_date query
+outputs:
+  - OgBundle (see OgBundle interface in src/domain/procedures.ts)
+decision_logic:
+  - If expandedAotUuids is empty, return empty bundle.
+  - Query occupancy_by_aot_and_date: separate stays + holds queries, merge in application.
+  - If compositeAndDualModeAotUuids non-empty: query og_state_by_ao.
+  - If dualModeAotUuids non-empty: query unallocated_by_aot_and_date (separate stays + holds, merge).
+  - If hasExclusiveUseAots: query property_has_any_occupancy_by_date via EXISTS.
+  - Return assembled OgBundle.
+error_behaviour:
+  - invalid_request (400): missing required inputs.
+  - internal_error (500): database failure.
+scoping_constraints:
+  - All queries are scoped to expandedAotUuids (by AOT UUID) or propertyUuid.
+  - holds query uses expires_at > now() filter to exclude expired holds.
+  - Pool selection (live vs training) is done by the route handler before calling this procedure.
+side_effects: none
+date_convention:
+  reservation_stays: start_date (inclusive) to end_date (exclusive) — nights covered are [start_date, end_date)
+  holds: check_in (inclusive) to check_out (exclusive) — nights covered are [check_in, check_out)
