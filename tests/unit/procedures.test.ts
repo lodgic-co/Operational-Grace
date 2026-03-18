@@ -126,11 +126,26 @@ describe('CreateReservationWithStays — pre-check validation', () => {
     ).rejects.toMatchObject({ status: 400, code: 'invalid_request' });
   });
 
-  it('rejects when a stay end_date equals start_date', async () => {
+  it('accepts a single-night stay where end_date equals start_date', async () => {
+    // Stay nights are inclusive: start_date=end_date means one night is valid.
+    // The pool is reached but the mock is empty; the promise rejects with a
+    // pool error rather than a validation error — that is sufficient to prove
+    // the validation itself did not throw invalid_request.
     const pool = makePool({});
     await expect(
       CreateReservationWithStays('live', pool, pool, 'res-uuid', PROP, 'Guest', '2027-01-04', '2027-01-07', [
         { accommodation_option_type_uuid: OPT_TYPE, start_date: '2027-01-05', end_date: '2027-01-05' },
+      ]),
+    ).rejects.not.toMatchObject({ status: 400, code: 'invalid_request' });
+  });
+
+  it('rejects a stay whose end_date equals the reservation check_out', async () => {
+    // Stay nights are inclusive. If check_out is Jan 7 the last valid night is
+    // Jan 6. A stay ending on check_out day is invalid.
+    const pool = makePool({});
+    await expect(
+      CreateReservationWithStays('live', pool, pool, 'res-uuid', PROP, 'Guest', '2027-01-04', '2027-01-07', [
+        { accommodation_option_type_uuid: OPT_TYPE, start_date: '2027-01-04', end_date: '2027-01-07' },
       ]),
     ).rejects.toMatchObject({ status: 400, code: 'invalid_request' });
   });
@@ -163,8 +178,8 @@ describe('CreateReservationWithStays — pre-check validation', () => {
   });
 
   it('passes validation for multiple non-contiguous stays within the reservation envelope', async () => {
-    // Two stays: Jan 4–5 and Jan 6–7 with a gap on Jan 5 night — valid.
-    // We only test the pre-check phase; the pool is expected to be reached.
+    // Two stays: nights Jan 4–5 and night Jan 6 (gap on Jan 5 is fine — stays are non-contiguous).
+    // check_out is Jan 7; the last valid stay night is Jan 6 (check_out - 1 day).
     const trxQuery = vi.fn()
       .mockResolvedValueOnce(undefined) // BEGIN
       .mockResolvedValueOnce({ rowCount: 0, rows: [] }) // INSERT reservation — conflict, so no rows
@@ -182,7 +197,7 @@ describe('CreateReservationWithStays — pre-check validation', () => {
     await expect(
       CreateReservationWithStays('live', pool, pool, 'res-uuid', PROP, 'Guest', '2027-01-04', '2027-01-07', [
         { accommodation_option_type_uuid: OPT_TYPE, start_date: '2027-01-04', end_date: '2027-01-05' },
-        { accommodation_option_type_uuid: OPT_TYPE, start_date: '2027-01-06', end_date: '2027-01-07' },
+        { accommodation_option_type_uuid: OPT_TYPE, start_date: '2027-01-06', end_date: '2027-01-06' },
       ]),
     ).resolves.toBeDefined();
   });
@@ -203,7 +218,7 @@ describe('CreateReservationWithStays — pre-check validation', () => {
 
     await expect(
       CreateReservationWithStays('live', pool, pool, 'res-uuid', PROP, 'Guest', '2027-01-04', '2027-01-07', [
-        { accommodation_option_type_uuid: OPT_TYPE, accommodation_option_uuid: null, start_date: '2027-01-04', end_date: '2027-01-07' },
+        { accommodation_option_type_uuid: OPT_TYPE, accommodation_option_uuid: null, start_date: '2027-01-04', end_date: '2027-01-06' },
       ]),
     ).resolves.toBeDefined();
   });
