@@ -25,9 +25,6 @@ inputs:
     considered-response; no local FK constraint per I16)
   - accommodationOptionUuid (string UUID | null — optional concrete option
     allocation; null means unallocated)
-  - accommodationUnitUuid (string UUID | null — optional specific physical unit
-    allocation; applicable for non-composite option types; null means unassigned;
-    no local FK constraint per I16)
   - startDate (string ISO date YYYY-MM-DD — stay segment start, inclusive;
     must be >= reservation check_in, validated upstream)
   - endDate (string ISO date YYYY-MM-DD — stay segment end, exclusive;
@@ -36,8 +33,7 @@ inputs:
     segment; null means no adult count specified)
 outputs:
   - StayRow (uuid, reservation_id, accommodation_option_type_uuid,
-    accommodation_option_uuid, accommodation_unit_uuid, start_date, end_date,
-    adult_count, created_at)
+    accommodation_option_uuid, start_date, end_date, adult_count, created_at)
 preconditions:
   - A transaction must be active on trx.
   - reservationId must be the internal primary key of an existing reservation.
@@ -46,10 +42,9 @@ preconditions:
     (enforced upstream by CreateReservationWithStays).
 decision_logic:
   - INSERT INTO reservation_stays (reservation_id, accommodation_option_type_uuid,
-    accommodation_option_uuid, accommodation_unit_uuid, start_date, end_date,
-    adult_count) VALUES ($1, $2::uuid, $3, $4, $5::date, $6::date, $7) RETURNING
-    all fields including server-generated uuid, accommodation_unit_uuid, adult_count,
-    and created_at.
+    accommodation_option_uuid, start_date, end_date, adult_count)
+    VALUES ($1, $2::uuid, $3, $4::date, $5::date, $6) RETURNING
+    all fields including server-generated uuid, adult_count, and created_at.
   - Return the RETURNING row as StayRow.
 relationship_traversal:
   - INSERT into reservation_stays with reservation_id FK to reservations(id).
@@ -67,13 +62,9 @@ data_dependencies:
 side_effects: >
   Inserts exactly one row into reservation_stays.
 invariants:
-  - accommodation_option_type_uuid, accommodation_option_uuid, and
-    accommodation_unit_uuid are conceptual cross-service references to
-    considered-response. No local foreign key constraints (I16
-    external_reference_rule).
-  - accommodation_unit_uuid is applicable for non-composite option types
-    (sale_basis != 'composite'). For composite types, unit allocation is
-    managed separately in considered-response.
+  - accommodation_option_type_uuid and accommodation_option_uuid are
+    conceptual cross-service references to considered-response. No local
+    foreign key constraints (I16 external_reference_rule).
   - Server-side UUID generation means this procedure is not individually
     idempotent; the caller (CreateReservationWithStays) handles idempotence
     at the reservation level.

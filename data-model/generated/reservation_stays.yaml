@@ -69,15 +69,6 @@ fields:
       Renamed from check_out in migration 202603160105.
     constraints:
       - CHECK (end_date > start_date)
-  - name: accommodation_unit_uuid
-    type: uuid
-    nullable: true
-    notes: >
-      Optional cross-service reference to a specific accommodation unit (physical
-      room or bed) allocated for this stay. Relevant for non-composite option types
-      where a concrete unit assignment is known at booking time. NULL means no
-      specific unit has been allocated. No local FK constraint per I16
-      external_reference_rule. Added in migration 202603170002.
   - name: adult_count
     type: integer
     nullable: true
@@ -101,14 +92,9 @@ triggers:
 notes:
   - This table exists in both operational_grace and
     operational_grace_training schemas with identical structure.
-  - accommodation_option_type_uuid, accommodation_option_uuid, and
-    accommodation_unit_uuid are conceptual cross-service references to
-    considered-response. No database FK constraints across service
-    boundaries (I16 external_reference_rule).
-  - accommodation_unit_uuid is applicable for non-composite option types
-    where a specific physical unit is assigned at booking time. For
-    composite option types (sale_basis == composite), unit allocation is
-    managed at the composite backing-unit level in considered-response.
+  - accommodation_option_type_uuid and accommodation_option_uuid are
+    conceptual cross-service references to considered-response. No database
+    FK constraints across service boundaries (I16 external_reference_rule).
   - Stays are created atomically with their parent reservation by
     CreateReservationWithStays. A stay cannot exist without a reservation.
   - start_date/end_date represent the nights assigned to a specific

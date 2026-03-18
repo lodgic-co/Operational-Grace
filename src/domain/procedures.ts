@@ -1,8 +1,356 @@
 import type { Pool, PoolClient } from 'pg';
 import type { Span } from '@opentelemetry/api';
 import { encodeCursor, decodeCursor } from './cursor.js';
-import { AppError, NotFound, BadGateway, InvalidRequest } from '../errors/index.js';
+import { AppError, NotFound, BadGateway, InvalidRequest, Unauthenticated } from '../errors/index.js';
 import type { MeasuredJudgementClient } from '../http/measured-judgement-client.js';
+
+// ---------------------------------------------------------------------------
+// Service Capability Enforcement
+// ---------------------------------------------------------------------------
+
+/**
+ * Asserts that the caller identified by callerServiceId is authorised to
+ * exercise the given capability key, per the startup-time capability map.
+ *
+ * Throws 401 Unauthenticated if the caller is not in the allowlist for the
+ * capability. No MJ call is made at request time.
+ */
+export function AssertServiceCapability(
+  capabilityKey: string,
+  callerServiceId: string,
+  capabilityAllowlistMap: ReadonlyMap<string, ReadonlySet<string>>,
+): void {
+  const allowedCallers = capabilityAllowlistMap.get(capabilityKey);
+  if (!allowedCallers || !allowedCallers.has(callerServiceId)) {
+    throw Unauthenticated(`Caller is not authorised for capability: ${capabilityKey}`);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// OG Bundle Assembly
+// ---------------------------------------------------------------------------
+
+export interface OccupancyByAotAndDate {
+  accommodation_option_type_uuid: string;
+  inventory_night: string;
+  room_stay_count: number;
+  active_hold_count: number;
+  room_stay_adults: number;
+  active_hold_adults: number;
+}
+
+export interface OgStateByAo {
+  accommodation_option_uuid: string;
+  accommodation_option_type_uuid: string;
+  inventory_night: string;
+  has_room_stay: boolean;
+  has_active_hold: boolean;
+}
+
+export interface UnallocatedByAotAndDate {
+  accommodation_option_type_uuid: string;
+  inventory_night: string;
+  unallocated_room_stay_count: number;
+  unallocated_hold_count: number;
+  unallocated_room_stay_adults: number;
+  unallocated_hold_adults: number;
+}
+
+export interface PropertyHasAnyOccupancyByDate {
+  inventory_night: string;
+  property_has_any_occupancy: boolean;
+}
+
+export interface OgBundle {
+  occupancy_by_aot_and_date: OccupancyByAotAndDate[];
+  og_state_by_ao: OgStateByAo[];
+  unallocated_by_aot_and_date: UnallocatedByAotAndDate[];
+  property_has_any_occupancy_by_date: PropertyHasAnyOccupancyByDate[];
+}
+
+export interface FetchOgBundleInput {
+  propertyUuid: string;
+  from: string;
+  to: string;
+  expandedAotUuids: string[];
+  compositeAndDualModeAotUuids: string[];
+  dualModeAotUuids: string[];
+  hasExclusiveUseAots: boolean;
+}
+
+/**
+ * Assembles the OG bundle for a rebuild scope. Called by POST /bundles/occupancy
+ * via AssertServiceCapability (capability: inventory.occupancy.bundle.read).
+ *
+ * Queries live or training schema via the environment-appropriate pool.
+ * All queries follow the assembly logic from sc-bundle-input-shapes.md.
+ */
+export async function FetchOgBundle(
+  pool: Pool,
+  input: FetchOgBundleInput,
+): Promise<OgBundle> {
+  const {
+    propertyUuid,
+    from,
+    to,
+    expandedAotUuids,
+    compositeAndDualModeAotUuids,
+    dualModeAotUuids,
+    hasExclusiveUseAots,
+  } = input;
+
+  if (!propertyUuid) throw InvalidRequest('property_uuid is required');
+  if (!from) throw InvalidRequest('from is required');
+  if (!to) throw InvalidRequest('to is required');
+
+  if (expandedAotUuids.length === 0) {
+    return {
+      occupancy_by_aot_and_date: [],
+      og_state_by_ao: [],
+      unallocated_by_aot_and_date: [],
+      property_has_any_occupancy_by_date: [],
+    };
+  }
+
+  // occupancy_by_aot_and_date — merge stays + holds per (AOT, night)
+  const staysOccupancy = await pool.query<{
+    accommodation_option_type_uuid: string;
+    inventory_night: string;
+    room_stay_count: string;
+    room_stay_adults: string;
+  }>(
+    `SELECT rs.accommodation_option_type_uuid,
+            d.inventory_night::text,
+            COUNT(*)::text              AS room_stay_count,
+            COALESCE(SUM(rs.adult_count), 0)::text AS room_stay_adults
+     FROM   reservation_stays rs
+     CROSS JOIN generate_series(rs.start_date, rs.end_date - interval '1 day', '1 day') AS d(inventory_night)
+     WHERE  rs.accommodation_option_type_uuid = ANY($1::uuid[])
+       AND  d.inventory_night BETWEEN $2::date AND $3::date
+     GROUP BY rs.accommodation_option_type_uuid, d.inventory_night`,
+    [expandedAotUuids, from, to],
+  );
+
+  const holdsOccupancy = await pool.query<{
+    accommodation_option_type_uuid: string;
+    inventory_night: string;
+    active_hold_count: string;
+    active_hold_adults: string;
+  }>(
+    `SELECT h.accommodation_option_type_uuid,
+            d.inventory_night::text,
+            COUNT(*)::text              AS active_hold_count,
+            COALESCE(SUM(h.adult_count), 0)::text AS active_hold_adults
+     FROM   holds h
+     CROSS JOIN generate_series(h.check_in, h.check_out - interval '1 day', '1 day') AS d(inventory_night)
+     WHERE  h.accommodation_option_type_uuid = ANY($1::uuid[])
+       AND  d.inventory_night BETWEEN $2::date AND $3::date
+       AND  h.expires_at > now()
+     GROUP BY h.accommodation_option_type_uuid, d.inventory_night`,
+    [expandedAotUuids, from, to],
+  );
+
+  // Merge stays + holds per (AOT, night)
+  const occupancyMap = new Map<string, OccupancyByAotAndDate>();
+  for (const r of staysOccupancy.rows) {
+    const key = `${r.accommodation_option_type_uuid}:${r.inventory_night}`;
+    occupancyMap.set(key, {
+      accommodation_option_type_uuid: r.accommodation_option_type_uuid,
+      inventory_night: r.inventory_night,
+      room_stay_count: parseInt(r.room_stay_count, 10),
+      active_hold_count: 0,
+      room_stay_adults: parseInt(r.room_stay_adults, 10),
+      active_hold_adults: 0,
+    });
+  }
+  for (const r of holdsOccupancy.rows) {
+    const key = `${r.accommodation_option_type_uuid}:${r.inventory_night}`;
+    const existing = occupancyMap.get(key);
+    if (existing) {
+      existing.active_hold_count = parseInt(r.active_hold_count, 10);
+      existing.active_hold_adults = parseInt(r.active_hold_adults, 10);
+    } else {
+      occupancyMap.set(key, {
+        accommodation_option_type_uuid: r.accommodation_option_type_uuid,
+        inventory_night: r.inventory_night,
+        room_stay_count: 0,
+        active_hold_count: parseInt(r.active_hold_count, 10),
+        room_stay_adults: 0,
+        active_hold_adults: parseInt(r.active_hold_adults, 10),
+      });
+    }
+  }
+  const occupancyByAotAndDate = Array.from(occupancyMap.values());
+
+  // og_state_by_ao — composite and dual-mode AOs only
+  let ogStateByAo: OgStateByAo[] = [];
+  if (compositeAndDualModeAotUuids.length > 0) {
+    const stateRows = await pool.query<{
+      ao_uuid: string;
+      aot_uuid: string;
+      inventory_night: string;
+      has_room_stay: boolean;
+      has_active_hold: boolean;
+    }>(
+      `SELECT
+         x.ao_uuid,
+         x.aot_uuid,
+         x.inventory_night,
+         bool_or(x.source = 'stay') AS has_room_stay,
+         bool_or(x.source = 'hold') AS has_active_hold
+       FROM (
+         SELECT rs.accommodation_option_uuid    AS ao_uuid,
+                rs.accommodation_option_type_uuid AS aot_uuid,
+                d.inventory_night::text,
+                'stay' AS source
+         FROM   reservation_stays rs
+         CROSS JOIN generate_series(rs.start_date, rs.end_date - interval '1 day', '1 day') AS d(inventory_night)
+         WHERE  rs.accommodation_option_uuid IS NOT NULL
+           AND  rs.accommodation_option_type_uuid = ANY($1::uuid[])
+           AND  d.inventory_night BETWEEN $2::date AND $3::date
+
+         UNION ALL
+
+         SELECT h.accommodation_option_uuid,
+                h.accommodation_option_type_uuid,
+                d.inventory_night::text,
+                'hold'
+         FROM   holds h
+         CROSS JOIN generate_series(h.check_in, h.check_out - interval '1 day', '1 day') AS d(inventory_night)
+         WHERE  h.accommodation_option_uuid IS NOT NULL
+           AND  h.accommodation_option_type_uuid = ANY($1::uuid[])
+           AND  d.inventory_night BETWEEN $2::date AND $3::date
+           AND  h.expires_at > now()
+       ) x
+       GROUP BY x.ao_uuid, x.aot_uuid, x.inventory_night`,
+      [compositeAndDualModeAotUuids, from, to],
+    );
+
+    ogStateByAo = stateRows.rows.map((r) => ({
+      accommodation_option_uuid: r.ao_uuid,
+      accommodation_option_type_uuid: r.aot_uuid,
+      inventory_night: r.inventory_night,
+      has_room_stay: r.has_room_stay,
+      has_active_hold: r.has_active_hold,
+    }));
+  }
+
+  // unallocated_by_aot_and_date — dual-mode peer AOTs only
+  let unallocatedByAotAndDate: UnallocatedByAotAndDate[] = [];
+  if (dualModeAotUuids.length > 0) {
+    const unallocStays = await pool.query<{
+      accommodation_option_type_uuid: string;
+      inventory_night: string;
+      unallocated_count: string;
+      unallocated_adults: string;
+    }>(
+      `SELECT rs.accommodation_option_type_uuid,
+              d.inventory_night::text,
+              COUNT(*)::text              AS unallocated_count,
+              COALESCE(SUM(rs.adult_count), 0)::text AS unallocated_adults
+       FROM   reservation_stays rs
+       CROSS JOIN generate_series(rs.start_date, rs.end_date - interval '1 day', '1 day') AS d(inventory_night)
+       WHERE  rs.accommodation_option_uuid IS NULL
+         AND  rs.accommodation_option_type_uuid = ANY($1::uuid[])
+         AND  d.inventory_night BETWEEN $2::date AND $3::date
+       GROUP BY rs.accommodation_option_type_uuid, d.inventory_night`,
+      [dualModeAotUuids, from, to],
+    );
+
+    const unallocHolds = await pool.query<{
+      accommodation_option_type_uuid: string;
+      inventory_night: string;
+      unallocated_count: string;
+      unallocated_adults: string;
+    }>(
+      `SELECT h.accommodation_option_type_uuid,
+              d.inventory_night::text,
+              COUNT(*)::text              AS unallocated_count,
+              COALESCE(SUM(h.adult_count), 0)::text AS unallocated_adults
+       FROM   holds h
+       CROSS JOIN generate_series(h.check_in, h.check_out - interval '1 day', '1 day') AS d(inventory_night)
+       WHERE  h.accommodation_option_uuid IS NULL
+         AND  h.accommodation_option_type_uuid = ANY($1::uuid[])
+         AND  d.inventory_night BETWEEN $2::date AND $3::date
+         AND  h.expires_at > now()
+       GROUP BY h.accommodation_option_type_uuid, d.inventory_night`,
+      [dualModeAotUuids, from, to],
+    );
+
+    const unallocMap = new Map<string, UnallocatedByAotAndDate>();
+    for (const r of unallocStays.rows) {
+      const key = `${r.accommodation_option_type_uuid}:${r.inventory_night}`;
+      unallocMap.set(key, {
+        accommodation_option_type_uuid: r.accommodation_option_type_uuid,
+        inventory_night: r.inventory_night,
+        unallocated_room_stay_count: parseInt(r.unallocated_count, 10),
+        unallocated_hold_count: 0,
+        unallocated_room_stay_adults: parseInt(r.unallocated_adults, 10),
+        unallocated_hold_adults: 0,
+      });
+    }
+    for (const r of unallocHolds.rows) {
+      const key = `${r.accommodation_option_type_uuid}:${r.inventory_night}`;
+      const existing = unallocMap.get(key);
+      if (existing) {
+        existing.unallocated_hold_count = parseInt(r.unallocated_count, 10);
+        existing.unallocated_hold_adults = parseInt(r.unallocated_adults, 10);
+      } else {
+        unallocMap.set(key, {
+          accommodation_option_type_uuid: r.accommodation_option_type_uuid,
+          inventory_night: r.inventory_night,
+          unallocated_room_stay_count: 0,
+          unallocated_hold_count: parseInt(r.unallocated_count, 10),
+          unallocated_room_stay_adults: 0,
+          unallocated_hold_adults: parseInt(r.unallocated_adults, 10),
+        });
+      }
+    }
+    unallocatedByAotAndDate = Array.from(unallocMap.values());
+  }
+
+  // property_has_any_occupancy_by_date — exclusive_use AOTs only
+  let propertyHasAnyOccupancyByDate: PropertyHasAnyOccupancyByDate[] = [];
+  if (hasExclusiveUseAots) {
+    const phaoResult = await pool.query<{
+      inventory_night: string;
+      property_has_any_occupancy: boolean;
+    }>(
+      `SELECT d.inventory_night::text,
+              EXISTS (
+                SELECT 1
+                FROM   reservation_stays rs
+                JOIN   reservations r ON r.id = rs.reservation_id
+                CROSS JOIN generate_series(rs.start_date, rs.end_date - interval '1 day', '1 day') AS n(night)
+                WHERE  r.property_uuid = $1::uuid
+                  AND  n.night = d.inventory_night
+
+                UNION ALL
+
+                SELECT 1
+                FROM   holds h
+                CROSS JOIN generate_series(h.check_in, h.check_out - interval '1 day', '1 day') AS n(night)
+                WHERE  h.property_uuid = $1::uuid
+                  AND  n.night = d.inventory_night
+                  AND  h.expires_at > now()
+              ) AS property_has_any_occupancy
+       FROM   generate_series($2::date, $3::date, '1 day') AS d(inventory_night)`,
+      [propertyUuid, from, to],
+    );
+
+    propertyHasAnyOccupancyByDate = phaoResult.rows.map((r) => ({
+      inventory_night: r.inventory_night,
+      property_has_any_occupancy: r.property_has_any_occupancy,
+    }));
+  }
+
+  return {
+    occupancy_by_aot_and_date: occupancyByAotAndDate,
+    og_state_by_ao: ogStateByAo,
+    unallocated_by_aot_and_date: unallocatedByAotAndDate,
+    property_has_any_occupancy_by_date: propertyHasAnyOccupancyByDate,
+  };
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Reservation + Stay create procedures
@@ -24,7 +372,6 @@ export interface StayRow {
   reservation_id: number;
   accommodation_option_type_uuid: string;
   accommodation_option_uuid: string | null;
-  accommodation_unit_uuid: string | null;
   start_date: string;
   end_date: string;
   adult_count: number | null;
@@ -80,7 +427,6 @@ export async function CreateReservationStay(
   reservationId: number,
   accommodationOptionTypeUuid: string,
   accommodationOptionUuid: string | null,
-  accommodationUnitUuid: string | null,
   startDate: string,
   endDate: string,
   adultCount: number | null,
@@ -88,20 +434,19 @@ export async function CreateReservationStay(
   const result = await trx.query(
     `INSERT INTO reservation_stays
        (reservation_id, accommodation_option_type_uuid, accommodation_option_uuid,
-        accommodation_unit_uuid, start_date, end_date, adult_count)
-     VALUES ($1, $2::uuid, $3, $4, $5::date, $6::date, $7)
+        start_date, end_date, adult_count)
+     VALUES ($1, $2::uuid, $3, $4::date, $5::date, $6)
      RETURNING
        uuid,
        reservation_id,
        accommodation_option_type_uuid,
        accommodation_option_uuid,
-       accommodation_unit_uuid,
        start_date::text,
        end_date::text,
        adult_count,
        to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS created_at`,
     [reservationId, accommodationOptionTypeUuid, accommodationOptionUuid ?? null,
-     accommodationUnitUuid ?? null, startDate, endDate, adultCount ?? null],
+     startDate, endDate, adultCount ?? null],
   );
   return result.rows[0] as StayRow;
 }
@@ -109,7 +454,6 @@ export async function CreateReservationStay(
 export interface StayInput {
   accommodation_option_type_uuid: string;
   accommodation_option_uuid?: string | null;
-  accommodation_unit_uuid?: string | null;
   start_date: string;
   end_date: string;
   adult_count?: number | null;
@@ -192,7 +536,7 @@ export async function CreateReservationWithStays(
     if (was_existing) {
       const existing = await trx.query(
         `SELECT uuid, reservation_id, accommodation_option_type_uuid, accommodation_option_uuid,
-                accommodation_unit_uuid, start_date::text, end_date::text, adult_count,
+                start_date::text, end_date::text, adult_count,
                 to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS created_at
          FROM reservation_stays
          WHERE reservation_id = $1`,
@@ -207,7 +551,6 @@ export async function CreateReservationWithStays(
           reservation.id,
           stay.accommodation_option_type_uuid,
           stay.accommodation_option_uuid ?? null,
-          stay.accommodation_unit_uuid ?? null,
           stay.start_date,
           stay.end_date,
           stay.adult_count ?? null,

@@ -318,6 +318,158 @@ paths:
         "500":
           $ref: "components/errors.yaml#/components/responses/InternalError"
 
+  /bundles/occupancy:
+    post:
+      operationId: fetchOccupancyBundle
+      x-auth-mode: service_capability
+      x-capability: inventory.occupancy.bundle.read
+      x-tenant-scope: property
+      x-public-surface: false
+      x-error-envelope: true
+      summary: Fetch OG occupancy bundle for a rebuild scope
+      description: >
+        Assembles and returns the full OgBundle for the given property, environment,
+        and date range. Called by special-circumstances at rebuild time.
+        Protected by service capability inventory.occupancy.bundle.read.
+        No delegated actor context is processed.
+      tags: [Bundles]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - property_uuid
+                - from
+                - to
+                - environment
+                - expanded_aot_uuids
+                - has_exclusive_use_aots
+              properties:
+                property_uuid:
+                  type: string
+                  format: uuid
+                from:
+                  type: string
+                  format: date
+                to:
+                  type: string
+                  format: date
+                environment:
+                  type: string
+                  enum: [live, training]
+                expanded_aot_uuids:
+                  type: array
+                  items:
+                    type: string
+                    format: uuid
+                  description: All AOT UUIDs in the OG scope
+                composite_and_dual_mode_aot_uuids:
+                  type: array
+                  items:
+                    type: string
+                    format: uuid
+                  description: AOTs requiring og_state_by_ao query
+                dual_mode_aot_uuids:
+                  type: array
+                  items:
+                    type: string
+                    format: uuid
+                  description: AOTs requiring unallocated_by_aot_and_date query
+                has_exclusive_use_aots:
+                  type: boolean
+                  description: Whether to run property_has_any_occupancy_by_date query
+      responses:
+        "200":
+          description: OG occupancy bundle
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - occupancy_by_aot_and_date
+                  - og_state_by_ao
+                  - unallocated_by_aot_and_date
+                  - property_has_any_occupancy_by_date
+                properties:
+                  occupancy_by_aot_and_date:
+                    type: array
+                    items:
+                      type: object
+                      required: [accommodation_option_type_uuid, inventory_night, room_stay_count, active_hold_count, room_stay_adults, active_hold_adults]
+                      properties:
+                        accommodation_option_type_uuid:
+                          type: string
+                          format: uuid
+                        inventory_night:
+                          type: string
+                          format: date
+                        room_stay_count:
+                          type: integer
+                        active_hold_count:
+                          type: integer
+                        room_stay_adults:
+                          type: integer
+                        active_hold_adults:
+                          type: integer
+                  og_state_by_ao:
+                    type: array
+                    items:
+                      type: object
+                      required: [accommodation_option_uuid, accommodation_option_type_uuid, inventory_night, has_room_stay, has_active_hold]
+                      properties:
+                        accommodation_option_uuid:
+                          type: string
+                          format: uuid
+                        accommodation_option_type_uuid:
+                          type: string
+                          format: uuid
+                        inventory_night:
+                          type: string
+                          format: date
+                        has_room_stay:
+                          type: boolean
+                        has_active_hold:
+                          type: boolean
+                  unallocated_by_aot_and_date:
+                    type: array
+                    items:
+                      type: object
+                      required: [accommodation_option_type_uuid, inventory_night, unallocated_room_stay_count, unallocated_hold_count, unallocated_room_stay_adults, unallocated_hold_adults]
+                      properties:
+                        accommodation_option_type_uuid:
+                          type: string
+                          format: uuid
+                        inventory_night:
+                          type: string
+                          format: date
+                        unallocated_room_stay_count:
+                          type: integer
+                        unallocated_hold_count:
+                          type: integer
+                        unallocated_room_stay_adults:
+                          type: integer
+                        unallocated_hold_adults:
+                          type: integer
+                  property_has_any_occupancy_by_date:
+                    type: array
+                    items:
+                      type: object
+                      required: [inventory_night, property_has_any_occupancy]
+                      properties:
+                        inventory_night:
+                          type: string
+                          format: date
+                        property_has_any_occupancy:
+                          type: boolean
+        "400":
+          $ref: "components/errors.yaml#/components/responses/BadRequest"
+        "401":
+          $ref: "components/errors.yaml#/components/responses/Unauthenticated"
+        "500":
+          $ref: "components/errors.yaml#/components/responses/InternalError"
+
 components:
   securitySchemes:
     BearerAuth:
@@ -444,14 +596,6 @@ components:
                 description: >
                   Optional allocation to a concrete sellable option. Null means the
                   stay is unallocated.
-              accommodation_unit_uuid:
-                type: string
-                format: uuid
-                nullable: true
-                description: >
-                  Optional allocation to a specific physical accommodation unit.
-                  Applicable for non-composite option types. Null means no specific
-                  unit has been assigned.
               start_date:
                 type: string
                 format: date
@@ -563,11 +707,6 @@ components:
                       type: string
                       format: uuid
                       nullable: true
-                    accommodation_unit_uuid:
-                      type: string
-                      format: uuid
-                      nullable: true
-                      description: Specific physical unit allocated for this stay, or null if unassigned.
                     start_date:
                       type: string
                       format: date

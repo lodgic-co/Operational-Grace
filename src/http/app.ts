@@ -7,6 +7,7 @@ import { healthRoutes } from '../routes/health.js';
 import { internalRoutes } from '../routes/internal.js';
 import { reservationRoutes } from '../routes/reservations.js';
 import { holdRoutes } from '../routes/holds.js';
+import { bundleRoutes } from '../routes/bundles.js';
 import { verifyServiceToken } from '../auth/verify-token.js';
 import { registerRequestId, registerCorrelationHeader, registerErrorHandler } from './error-handler.js';
 import type { MeasuredJudgementClient } from './measured-judgement-client.js';
@@ -21,6 +22,7 @@ export interface CreateAppOptions {
   mjClient: MeasuredJudgementClient;
   livePool: Pool;
   trainingPool: Pool;
+  capabilityAllowlistMap?: ReadonlyMap<string, ReadonlySet<string>>;
 }
 
 export function createApp(opts: CreateAppOptions) {
@@ -41,7 +43,7 @@ export function createApp(opts: CreateAppOptions) {
     );
   }
 
-  const { livePool, trainingPool, mjClient } = opts;
+  const { livePool, trainingPool, mjClient, capabilityAllowlistMap } = opts;
 
   app.register(
     (f) => reservationRoutes(f, { environment: 'live', livePool, trainingPool, mjClient }),
@@ -60,6 +62,12 @@ export function createApp(opts: CreateAppOptions) {
     (f) => holdRoutes(f, { environment: 'training', livePool, trainingPool, mjClient }),
     { prefix: '/training' },
   );
+
+  if (capabilityAllowlistMap) {
+    app.register((f) =>
+      bundleRoutes(f, { livePool, trainingPool, capabilityAllowlistMap }),
+    );
+  }
 
   app.decorateRequest('startTime', BigInt(0));
   app.decorateRequest('inboundSpan', null);
