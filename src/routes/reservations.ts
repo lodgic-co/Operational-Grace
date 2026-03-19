@@ -11,7 +11,9 @@ import {
   CreateReservationWithStays,
   type StayInput,
 } from '../domain/procedures.js';
+import { PublishReservationCreated } from '../domain/events.js';
 import type { MeasuredJudgementClient } from '../http/measured-judgement-client.js';
+import { config } from '../config/index.js';
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -176,6 +178,21 @@ export async function reservationRoutes(
       check_out,
       stayInputs,
     );
+
+    if (!result.was_existing && config.SC_INGEST_URL && config.OG_SC_INGEST_SECRET) {
+      void PublishReservationCreated({
+        reservationUuid: reservation_uuid,
+        organisationUuid: actor.organisationUuid,
+        propertyUuid: property_uuid,
+        mode: environment,
+        stays: stayInputs.map((s) => ({
+          aot_uuid: s.accommodation_option_type_uuid,
+          effective_from_date: s.start_date,
+          effective_to_date: s.end_date,
+        })),
+        cfg: { scIngestUrl: config.SC_INGEST_URL, scIngestSecret: config.OG_SC_INGEST_SECRET },
+      });
+    }
 
     return reply.code(201).send(result);
   });

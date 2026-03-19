@@ -8,7 +8,9 @@ import {
   AssertPropertyPermission,
   CreateHold,
 } from '../domain/procedures.js';
+import { PublishHoldCreated } from '../domain/events.js';
 import type { MeasuredJudgementClient } from '../http/measured-judgement-client.js';
+import { config } from '../config/index.js';
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const ISO_DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
@@ -102,7 +104,18 @@ export async function holdRoutes(
       expires_at,
     );
 
-    void was_existing;
+    if (!was_existing && config.SC_INGEST_URL && config.OG_SC_INGEST_SECRET) {
+      void PublishHoldCreated({
+        holdUuid: hold_uuid,
+        organisationUuid: actor.organisationUuid,
+        propertyUuid: property_uuid,
+        mode: environment,
+        aotUuid: accommodation_option_type_uuid,
+        effectiveFromDate: check_in,
+        effectiveToDate: check_out,
+        cfg: { scIngestUrl: config.SC_INGEST_URL, scIngestSecret: config.OG_SC_INGEST_SECRET },
+      });
+    }
 
     return reply.code(201).send({ hold });
   });
