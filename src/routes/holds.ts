@@ -104,7 +104,7 @@ export async function holdRoutes(
       expires_at,
     );
 
-    if (!was_existing && config.SC_INGEST_URL && config.OG_SC_INGEST_SECRET) {
+    if (!was_existing && config.SC_INGEST_URL && config.AUTH0_M2M_AUDIENCE_SPECIAL_CIRCUMSTANCES) {
       void PublishHoldCreated({
         holdUuid: hold_uuid,
         organisationUuid: actor.organisationUuid,
@@ -113,7 +113,7 @@ export async function holdRoutes(
         aotUuid: accommodation_option_type_uuid,
         effectiveFromDate: check_in,
         effectiveToDate: check_out,
-        cfg: { scIngestUrl: config.SC_INGEST_URL, scIngestSecret: config.OG_SC_INGEST_SECRET },
+        cfg: { scIngestUrl: config.SC_INGEST_URL },
       });
     }
 

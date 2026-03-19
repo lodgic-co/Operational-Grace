@@ -8,9 +8,45 @@
  * Fire-and-forget with local catch: event delivery failure must not fail the mutation response.
  */
 
+import { config } from '../config/index.js';
+
+const TOKEN_EXPIRY_BUFFER_SECONDS = 60;
+
+let cachedScToken: string | null = null;
+let scTokenExpiresAt = 0;
+
+async function acquireScToken(): Promise<string> {
+  const now = Math.floor(Date.now() / 1000);
+  if (cachedScToken && scTokenExpiresAt > now + TOKEN_EXPIRY_BUFFER_SECONDS) {
+    return cachedScToken;
+  }
+
+  const body = new URLSearchParams({
+    grant_type: 'client_credentials',
+    client_id: config.AUTH0_M2M_CLIENT_ID,
+    client_secret: config.AUTH0_M2M_CLIENT_SECRET,
+    audience: config.AUTH0_M2M_AUDIENCE_SPECIAL_CIRCUMSTANCES,
+  });
+
+  const response = await fetch(config.AUTH0_TOKEN_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: body.toString(),
+    signal: AbortSignal.timeout(5000),
+  });
+
+  if (!response.ok) {
+    throw new Error(`M2M token exchange for special-circumstances failed: ${response.status}`);
+  }
+
+  const data = (await response.json()) as { access_token: string; expires_in: number };
+  cachedScToken = data.access_token;
+  scTokenExpiresAt = now + data.expires_in;
+  return cachedScToken;
+}
+
 export interface ScIngestEndpointConfig {
   scIngestUrl: string;
-  scIngestSecret: string;
 }
 
 interface ScIngestBody {
@@ -30,11 +66,13 @@ async function postToScIngest(
   cfg: ScIngestEndpointConfig,
   body: ScIngestBody,
 ): Promise<void> {
+  const token = await acquireScToken();
+
   const response = await fetch(cfg.scIngestUrl, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'x-sc-ingest-secret': cfg.scIngestSecret,
+      Authorization: `Bearer ${token}`,
     },
     body: JSON.stringify(body),
     signal: AbortSignal.timeout(5000),

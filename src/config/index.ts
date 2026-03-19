@@ -49,7 +49,7 @@ export const configSchema = {
     AUTH0_M2M_CLIENT_SECRET: { type: 'string' as const },
     AUTH0_TOKEN_URL: { type: 'string' as const },
     SC_INGEST_URL: { type: 'string' as const, default: '' },
-    OG_SC_INGEST_SECRET: { type: 'string' as const, default: '' },
+    AUTH0_M2M_AUDIENCE_SPECIAL_CIRCUMSTANCES: { type: 'string' as const, default: '' },
   },
 };
 
@@ -75,7 +75,7 @@ export interface AppConfig {
   AUTH0_M2M_CLIENT_SECRET: string;
   AUTH0_TOKEN_URL: string;
   SC_INGEST_URL: string;
-  OG_SC_INGEST_SECRET: string;
+  AUTH0_M2M_AUDIENCE_SPECIAL_CIRCUMSTANCES: string;
 }
 
 /**

@@ -179,7 +179,7 @@ export async function reservationRoutes(
       stayInputs,
     );
 
-    if (!result.was_existing && config.SC_INGEST_URL && config.OG_SC_INGEST_SECRET) {
+    if (!result.was_existing && config.SC_INGEST_URL && config.AUTH0_M2M_AUDIENCE_SPECIAL_CIRCUMSTANCES) {
       void PublishReservationCreated({
         reservationUuid: reservation_uuid,
         organisationUuid: actor.organisationUuid,
@@ -190,7 +190,7 @@ export async function reservationRoutes(
           effective_from_date: s.start_date,
           effective_to_date: s.end_date,
         })),
-        cfg: { scIngestUrl: config.SC_INGEST_URL, scIngestSecret: config.OG_SC_INGEST_SECRET },
+        cfg: { scIngestUrl: config.SC_INGEST_URL },
       });
     }
 
