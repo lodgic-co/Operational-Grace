@@ -20,7 +20,7 @@ async function acquireMjToken(): Promise<string> {
     grant_type: 'client_credentials',
     client_id: config.AUTH0_M2M_CLIENT_ID,
     client_secret: config.AUTH0_M2M_CLIENT_SECRET,
-    audience: config.AUTH0_M2M_AUDIENCE,
+    audience: config.AUTH0_M2M_AUDIENCE_MEASURED_JUDGEMENT,
   });
 
   const response = await fetch(config.AUTH0_TOKEN_URL, {

@@ -12,7 +12,7 @@ export const configSchema = {
     'DB_IDLE_TIMEOUT_MS',
     'CURSOR_HMAC_SECRET',
     'MEASURED_JUDGEMENT_BASE_URL',
-    'AUTH0_M2M_AUDIENCE',
+    'AUTH0_M2M_AUDIENCE_MEASURED_JUDGEMENT',
     'AUTH0_M2M_CLIENT_ID',
     'AUTH0_M2M_CLIENT_SECRET',
     'AUTH0_TOKEN_URL',
@@ -44,11 +44,11 @@ export const configSchema = {
     OTEL_EXPORTER_OTLP_ENDPOINT: { type: 'string' as const, default: '' },
     OTEL_SERVICE_NAME: { type: 'string' as const, default: 'operational-grace' },
     MEASURED_JUDGEMENT_BASE_URL: { type: 'string' as const },
-    AUTH0_M2M_AUDIENCE: { type: 'string' as const },
     AUTH0_M2M_CLIENT_ID: { type: 'string' as const },
     AUTH0_M2M_CLIENT_SECRET: { type: 'string' as const },
     AUTH0_TOKEN_URL: { type: 'string' as const },
-    SC_INGEST_URL: { type: 'string' as const, default: '' },
+    SPECIAL_CIRCUMSTANCES_BASE_URL: { type: 'string' as const, default: '' },
+    AUTH0_M2M_AUDIENCE_MEASURED_JUDGEMENT: { type: 'string' as const },
     AUTH0_M2M_AUDIENCE_SPECIAL_CIRCUMSTANCES: { type: 'string' as const, default: '' },
   },
 };
@@ -70,11 +70,11 @@ export interface AppConfig {
   OTEL_EXPORTER_OTLP_ENDPOINT: string;
   OTEL_SERVICE_NAME: string;
   MEASURED_JUDGEMENT_BASE_URL: string;
-  AUTH0_M2M_AUDIENCE: string;
+  AUTH0_M2M_AUDIENCE_MEASURED_JUDGEMENT: string;
   AUTH0_M2M_CLIENT_ID: string;
   AUTH0_M2M_CLIENT_SECRET: string;
   AUTH0_TOKEN_URL: string;
-  SC_INGEST_URL: string;
+  SPECIAL_CIRCUMSTANCES_BASE_URL: string;
   AUTH0_M2M_AUDIENCE_SPECIAL_CIRCUMSTANCES: string;
 }
 

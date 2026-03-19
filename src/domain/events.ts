@@ -46,7 +46,7 @@ async function acquireScToken(): Promise<string> {
 }
 
 export interface ScIngestEndpointConfig {
-  scIngestUrl: string;
+  scBaseUrl: string;
 }
 
 interface ScIngestBody {
@@ -68,7 +68,7 @@ async function postToScIngest(
 ): Promise<void> {
   const token = await acquireScToken();
 
-  const response = await fetch(cfg.scIngestUrl, {
+  const response = await fetch(`${cfg.scBaseUrl}/internal/events/ingest`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
