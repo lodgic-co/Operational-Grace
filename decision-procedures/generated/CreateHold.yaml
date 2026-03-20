@@ -7,8 +7,8 @@ purpose: >
   Idempotence is enforced via UNIQUE (uuid) ON CONFLICT (uuid) DO NOTHING.
   Returns the hold record and a was_existing flag.
 
-  BEGIN → INSERT holds ON CONFLICT (uuid) DO NOTHING → SELECT → COMMIT.
-  Any failure → ROLLBACK.
+  BEGIN → INSERT holds ON CONFLICT (uuid) DO NOTHING → SELECT → INSERT
+  audit_event (idempotent) → COMMIT. Any failure → ROLLBACK.
 
   Implements the create procedure taxonomy per I16: new entity creation,
   owns the transaction, client-supplied UUID for idempotence.
@@ -33,6 +33,8 @@ inputs:
   - checkIn (string ISO date YYYY-MM-DD)
   - checkOut (string ISO date YYYY-MM-DD — must be > checkIn)
   - expiresAt (string ISO 8601 datetime — hold expiry timestamp)
+  - auditContext (AuditMutationContext — actor_user_uuid, organisation_uuid,
+    property_uuid, request_id for audit v1 envelope)
 outputs:
   - hold (HoldRow — uuid, property_uuid, accommodation_option_type_uuid,
     accommodation_option_uuid, check_in, check_out, expires_at, created_at)
@@ -49,6 +51,8 @@ decision_logic:
     ON CONFLICT (uuid) DO NOTHING.
   - was_existing = (insertResult.rowCount === 0).
   - SELECT the hold row by uuid (works for both new and pre-existing).
+  - INSERT audit_event for hold_created (ON CONFLICT idempotency_key DO
+    NOTHING) before COMMIT.
   - COMMIT; return { hold, was_existing }.
   - On any error: ROLLBACK and re-throw.
 relationship_traversal:
@@ -70,9 +74,11 @@ error_behaviour:
 data_dependencies:
   - operational_grace.holds (write — INSERT ON CONFLICT DO NOTHING, then
     SELECT)
+  - operational_grace.audit_event (insert — idempotent per idempotency_key)
 side_effects: >
   Inserts zero or one row into holds depending on whether the uuid already
-  exists.
+  exists; always attempts one audit_event insert (no-op on duplicate
+  idempotency_key).
 invariants:
   - Client-supplied UUID idempotence: repeated calls with the same holdUuid
     are safe and produce the same hold row.

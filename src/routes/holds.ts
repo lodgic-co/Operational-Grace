@@ -102,6 +102,12 @@ export async function holdRoutes(
       check_in,
       check_out,
       expires_at,
+      {
+        actorUserUuid: actor.actorUserUuid,
+        organisationUuid: actor.organisationUuid,
+        propertyUuid: property_uuid,
+        requestId: request.requestId,
+      },
     );
 
     if (!was_existing && config.SPECIAL_CIRCUMSTANCES_BASE_URL && config.AUTH0_M2M_AUDIENCE_SPECIAL_CIRCUMSTANCES) {

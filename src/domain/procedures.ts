@@ -3,6 +3,10 @@ import type { Span } from '@opentelemetry/api';
 import { encodeCursor, decodeCursor } from './cursor.js';
 import { AppError, NotFound, BadGateway, InvalidRequest, Unauthenticated } from '../errors/index.js';
 import type { MeasuredJudgementClient } from '../http/measured-judgement-client.js';
+import { insertAuditEventRow, type AuditMutationContext } from './audit-persist.js';
+import * as AuditPure from './audit.js';
+
+export type { AuditMutationContext } from './audit-persist.js';
 
 // ---------------------------------------------------------------------------
 // Service Capability Enforcement
@@ -495,6 +499,7 @@ export async function CreateReservationWithStays(
   checkIn: string,
   checkOut: string,
   stays: StayInput[],
+  auditContext: AuditMutationContext,
 ): Promise<CreateReservationResult> {
   if (stays.length === 0) {
     throw InvalidRequest('A reservation must contain at least one stay');
@@ -559,6 +564,23 @@ export async function CreateReservationWithStays(
       }
     }
 
+    const auditNow = new Date();
+    await insertAuditEventRow(trx, {
+      idempotencyKey: AuditPure.reservationIdempotencyKey(reservationUuid),
+      eventName: 'reservation_created',
+      occurredAt: auditNow,
+      recordedAt: auditNow,
+      actorUserUuid: auditContext.actorUserUuid,
+      executorService: AuditPure.EXECUTOR_SERVICE,
+      organisationUuid: auditContext.organisationUuid,
+      propertyUuid: auditContext.propertyUuid,
+      targetType: 'reservation',
+      targetUuid: reservationUuid,
+      requestId: auditContext.requestId,
+      metadata: AuditPure.reservationAuditMetadata(checkIn, checkOut),
+      changeSet: null,
+    });
+
     await trx.query('COMMIT');
 
     return {
@@ -622,6 +644,7 @@ export async function CreateHold(
   checkIn: string,
   checkOut: string,
   expiresAt: string,
+  auditContext: AuditMutationContext,
 ): Promise<CreateHoldResult> {
   if (checkOut <= checkIn) {
     throw InvalidRequest('check_out must be greater than check_in');
@@ -662,9 +685,31 @@ export async function CreateHold(
       [holdUuid],
     );
 
+    const holdRow = selectResult.rows[0] as HoldRow;
+    const auditNow = new Date();
+    await insertAuditEventRow(trx, {
+      idempotencyKey: AuditPure.holdIdempotencyKey(holdUuid),
+      eventName: 'hold_created',
+      occurredAt: auditNow,
+      recordedAt: auditNow,
+      actorUserUuid: auditContext.actorUserUuid,
+      executorService: AuditPure.EXECUTOR_SERVICE,
+      organisationUuid: auditContext.organisationUuid,
+      propertyUuid: auditContext.propertyUuid,
+      targetType: 'hold',
+      targetUuid: holdUuid,
+      requestId: auditContext.requestId,
+      metadata: AuditPure.holdAuditMetadata({
+        check_in: holdRow.check_in,
+        check_out: holdRow.check_out,
+        expires_at: holdRow.expires_at,
+      }),
+      changeSet: null,
+    });
+
     await trx.query('COMMIT');
 
-    return { hold: selectResult.rows[0] as HoldRow, was_existing };
+    return { hold: holdRow, was_existing };
   } catch (err) {
     await trx.query('ROLLBACK');
     throw err;
