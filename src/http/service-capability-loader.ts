@@ -1,4 +1,5 @@
 import { config } from '../config/index.js';
+import { fetchOutbound } from './outbound-dispatcher.js';
 
 const REQUEST_TIMEOUT_MS = 5000;
 const TOKEN_EXPIRY_BUFFER_SECONDS = 60;
@@ -19,7 +20,7 @@ async function acquireMjToken(): Promise<string> {
     audience: config.AUTH0_M2M_AUDIENCE_MEASURED_JUDGEMENT,
   });
 
-  const response = await fetch(config.AUTH0_TOKEN_URL, {
+  const response = await fetchOutbound(config.AUTH0_TOKEN_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: body.toString(),
@@ -50,7 +51,7 @@ export async function loadCapabilityAllowlistMap(
   const url = new URL('/service-authorities/grants', config.MEASURED_JUDGEMENT_BASE_URL);
   url.searchParams.set('owning_service', owningService);
 
-  const response = await fetch(url.toString(), {
+  const response = await fetchOutbound(url.toString(), {
     method: 'GET',
     headers: {
       Accept: 'application/json',

@@ -56,6 +56,9 @@ importers:
       pg:
         specifier: ^8.20.0
         version: 8.20.0
+      undici:
+        specifier: ^6.24.1
+        version: 6.24.1
       zod:
         specifier: ^4.3.6
         version: 4.3.6
@@ -2676,8 +2679,8 @@ packages:
   undici-types@7.18.2:
     resolution: {integrity: sha512-AsuCzffGHJybSaRrmr5eHr81mwJU3kjw6M+uprWvCXiNeN9SOGwQ3Jn8jb8m3Z6izVgknn1R0FTCEAP2QrLY/w==}
 
-  undici@6.23.0:
-    resolution: {integrity: sha512-VfQPToRA5FZs/qJxLIinmU59u0r7LXqoJkCzinq3ckNJp3vKEh7jTWN589YQ5+aoAC/TGRLyJLCPKcLQbM8r9g==}
+  undici@6.24.1:
+    resolution: {integrity: sha512-sC+b0tB1whOCzbtlx20fx3WgCXwkW627p4EA9uM+/tNNPkSS+eSEld6pAs9nDv7WbY1UUljBMYPtu9BCOrCWKA==}
     engines: {node: '>=18.17'}
 
   uri-js-replace@1.0.1:
@@ -3960,7 +3963,7 @@ snapshots:
       simple-websocket: 9.1.0
       styled-components: 6.3.9(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
       ulid: 3.0.2
-      undici: 6.23.0
+      undici: 6.24.1
       yargs: 17.0.1
     transitivePeerDependencies:
       - '@opentelemetry/api'
@@ -5650,7 +5653,7 @@ snapshots:
 
   undici-types@7.18.2: {}
 
-  undici@6.23.0: {}
+  undici@6.24.1: {}
 
   uri-js-replace@1.0.1: {}
 

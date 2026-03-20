@@ -9,6 +9,7 @@
  */
 
 import { config } from '../config/index.js';
+import { fetchOutbound } from '../http/outbound-dispatcher.js';
 
 const TOKEN_EXPIRY_BUFFER_SECONDS = 60;
 
@@ -28,7 +29,7 @@ async function acquireScToken(): Promise<string> {
     audience: config.AUTH0_M2M_AUDIENCE_SPECIAL_CIRCUMSTANCES,
   });
 
-  const response = await fetch(config.AUTH0_TOKEN_URL, {
+  const response = await fetchOutbound(config.AUTH0_TOKEN_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: body.toString(),
@@ -68,7 +69,7 @@ async function postToScIngest(
 ): Promise<void> {
   const token = await acquireScToken();
 
-  const response = await fetch(`${cfg.scBaseUrl}/internal/events/ingest`, {
+  const response = await fetchOutbound(`${cfg.scBaseUrl}/internal/events/ingest`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

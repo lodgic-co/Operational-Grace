@@ -1,6 +1,7 @@
 import { trace, context, type Span } from '@opentelemetry/api';
 import { config } from '../config/index.js';
 import { BadGateway, GatewayTimeout } from '../errors/index.js';
+import { fetchOutbound } from './outbound-dispatcher.js';
 
 const REQUEST_TIMEOUT_MS = 5000;
 const MAX_RETRIES = 2;
@@ -23,7 +24,7 @@ async function acquireMjToken(): Promise<string> {
     audience: config.AUTH0_M2M_AUDIENCE_MEASURED_JUDGEMENT,
   });
 
-  const response = await fetch(config.AUTH0_TOKEN_URL, {
+  const response = await fetchOutbound(config.AUTH0_TOKEN_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: body.toString(),
@@ -62,7 +63,10 @@ function doFetch(
     : context.active();
 
   return context.with(ctx, () =>
-    fetch(url, { ...options, signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) }),
+    fetchOutbound(url, {
+      ...options,
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    }),
   );
 }
 
