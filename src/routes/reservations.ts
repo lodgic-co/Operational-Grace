@@ -177,6 +177,12 @@ export async function reservationRoutes(
       check_in,
       check_out,
       stayInputs,
+      {
+        actorUserUuid: actor.actorUserUuid,
+        organisationUuid: actor.organisationUuid,
+        propertyUuid: property_uuid,
+        requestId: request.requestId,
+      },
     );
 
     if (!result.was_existing && config.SPECIAL_CIRCUMSTANCES_BASE_URL && config.AUTH0_M2M_AUDIENCE_SPECIAL_CIRCUMSTANCES) {

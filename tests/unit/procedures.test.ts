@@ -100,11 +100,18 @@ function makePool(trx: Partial<PoolClient>): Pool {
 const PROP = '44444444-4444-4444-a444-444444444444';
 const OPT_TYPE = '55555555-5555-4555-a555-555555555555';
 
+const AUDIT_CTX = {
+  actorUserUuid: ACTOR_UUID,
+  organisationUuid: ORG_UUID,
+  propertyUuid: PROP,
+  requestId: REQUEST_ID,
+};
+
 describe('CreateReservationWithStays — pre-check validation', () => {
   it('rejects when stays array is empty', async () => {
     const pool = makePool({});
     await expect(
-      CreateReservationWithStays('live', pool, pool, 'res-uuid', PROP, 'Guest', '2027-01-04', '2027-01-07', []),
+      CreateReservationWithStays('live', pool, pool, 'res-uuid', PROP, 'Guest', '2027-01-04', '2027-01-07', [], AUDIT_CTX),
     ).rejects.toMatchObject({ status: 400, code: 'invalid_request' });
   });
 
@@ -113,7 +120,7 @@ describe('CreateReservationWithStays — pre-check validation', () => {
     await expect(
       CreateReservationWithStays('live', pool, pool, 'res-uuid', PROP, 'Guest', '2027-01-07', '2027-01-07', [
         { accommodation_option_type_uuid: OPT_TYPE, start_date: '2027-01-07', end_date: '2027-01-07' },
-      ]),
+      ], AUDIT_CTX),
     ).rejects.toMatchObject({ status: 400, code: 'invalid_request' });
   });
 
@@ -122,7 +129,7 @@ describe('CreateReservationWithStays — pre-check validation', () => {
     await expect(
       CreateReservationWithStays('live', pool, pool, 'res-uuid', PROP, 'Guest', '2027-01-07', '2027-01-04', [
         { accommodation_option_type_uuid: OPT_TYPE, start_date: '2027-01-04', end_date: '2027-01-07' },
-      ]),
+      ], AUDIT_CTX),
     ).rejects.toMatchObject({ status: 400, code: 'invalid_request' });
   });
 
@@ -135,7 +142,7 @@ describe('CreateReservationWithStays — pre-check validation', () => {
     await expect(
       CreateReservationWithStays('live', pool, pool, 'res-uuid', PROP, 'Guest', '2027-01-04', '2027-01-07', [
         { accommodation_option_type_uuid: OPT_TYPE, start_date: '2027-01-05', end_date: '2027-01-05' },
-      ]),
+      ], AUDIT_CTX),
     ).rejects.not.toMatchObject({ status: 400, code: 'invalid_request' });
   });
 
@@ -146,7 +153,7 @@ describe('CreateReservationWithStays — pre-check validation', () => {
     await expect(
       CreateReservationWithStays('live', pool, pool, 'res-uuid', PROP, 'Guest', '2027-01-04', '2027-01-07', [
         { accommodation_option_type_uuid: OPT_TYPE, start_date: '2027-01-04', end_date: '2027-01-07' },
-      ]),
+      ], AUDIT_CTX),
     ).rejects.toMatchObject({ status: 400, code: 'invalid_request' });
   });
 
@@ -155,7 +162,7 @@ describe('CreateReservationWithStays — pre-check validation', () => {
     await expect(
       CreateReservationWithStays('live', pool, pool, 'res-uuid', PROP, 'Guest', '2027-01-04', '2027-01-07', [
         { accommodation_option_type_uuid: OPT_TYPE, start_date: '2027-01-06', end_date: '2027-01-04' },
-      ]),
+      ], AUDIT_CTX),
     ).rejects.toMatchObject({ status: 400, code: 'invalid_request' });
   });
 
@@ -164,7 +171,7 @@ describe('CreateReservationWithStays — pre-check validation', () => {
     await expect(
       CreateReservationWithStays('live', pool, pool, 'res-uuid', PROP, 'Guest', '2027-01-04', '2027-01-07', [
         { accommodation_option_type_uuid: OPT_TYPE, start_date: '2027-01-03', end_date: '2027-01-06' },
-      ]),
+      ], AUDIT_CTX),
     ).rejects.toMatchObject({ status: 400, code: 'invalid_request' });
   });
 
@@ -173,7 +180,7 @@ describe('CreateReservationWithStays — pre-check validation', () => {
     await expect(
       CreateReservationWithStays('live', pool, pool, 'res-uuid', PROP, 'Guest', '2027-01-04', '2027-01-07', [
         { accommodation_option_type_uuid: OPT_TYPE, start_date: '2027-01-05', end_date: '2027-01-09' },
-      ]),
+      ], AUDIT_CTX),
     ).rejects.toMatchObject({ status: 400, code: 'invalid_request' });
   });
 
@@ -188,6 +195,7 @@ describe('CreateReservationWithStays — pre-check validation', () => {
         check_in: '2027-01-04', check_out: '2027-01-07', created_at: '2027-01-01T00:00:00.000000Z',
       }] })
       .mockResolvedValueOnce({ rows: [] }) // SELECT existing stays (was_existing=true path)
+      .mockResolvedValueOnce({ rowCount: 1, rows: [] }) // INSERT audit_event ON CONFLICT DO NOTHING
       .mockResolvedValueOnce(undefined); // COMMIT
 
     const trx = { query: trxQuery, release: vi.fn() } as unknown as PoolClient;
@@ -198,7 +206,7 @@ describe('CreateReservationWithStays — pre-check validation', () => {
       CreateReservationWithStays('live', pool, pool, 'res-uuid', PROP, 'Guest', '2027-01-04', '2027-01-07', [
         { accommodation_option_type_uuid: OPT_TYPE, start_date: '2027-01-04', end_date: '2027-01-05' },
         { accommodation_option_type_uuid: OPT_TYPE, start_date: '2027-01-06', end_date: '2027-01-06' },
-      ]),
+      ], AUDIT_CTX),
     ).resolves.toBeDefined();
   });
 
@@ -211,6 +219,7 @@ describe('CreateReservationWithStays — pre-check validation', () => {
         check_in: '2027-01-04', check_out: '2027-01-07', created_at: '2027-01-01T00:00:00.000000Z',
       }] })
       .mockResolvedValueOnce({ rows: [] }) // SELECT existing stays
+      .mockResolvedValueOnce({ rowCount: 1, rows: [] }) // INSERT audit_event
       .mockResolvedValueOnce(undefined); // COMMIT
 
     const trx = { query: trxQuery, release: vi.fn() } as unknown as PoolClient;
@@ -219,7 +228,7 @@ describe('CreateReservationWithStays — pre-check validation', () => {
     await expect(
       CreateReservationWithStays('live', pool, pool, 'res-uuid', PROP, 'Guest', '2027-01-04', '2027-01-07', [
         { accommodation_option_type_uuid: OPT_TYPE, accommodation_option_uuid: null, start_date: '2027-01-04', end_date: '2027-01-06' },
-      ]),
+      ], AUDIT_CTX),
     ).resolves.toBeDefined();
   });
 });

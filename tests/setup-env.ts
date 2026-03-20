@@ -13,6 +13,8 @@ process.env['DB_CONNECTION_TIMEOUT_MS'] = '3000';
 process.env['DB_IDLE_TIMEOUT_MS'] = '5000';
 process.env['MEASURED_JUDGEMENT_BASE_URL'] = process.env['MEASURED_JUDGEMENT_BASE_URL'] ?? 'https://measured-judgement.internal.test';
 process.env['AUTH0_M2M_AUDIENCE'] = process.env['AUTH0_M2M_AUDIENCE'] ?? 'https://internal.test.example.com/measured-judgement';
+process.env['AUTH0_M2M_AUDIENCE_MEASURED_JUDGEMENT'] =
+  process.env['AUTH0_M2M_AUDIENCE_MEASURED_JUDGEMENT'] ?? process.env['AUTH0_M2M_AUDIENCE'];
 process.env['AUTH0_M2M_CLIENT_ID'] = process.env['AUTH0_M2M_CLIENT_ID'] ?? 'test-og-m2m-client-id';
 process.env['AUTH0_M2M_CLIENT_SECRET'] = process.env['AUTH0_M2M_CLIENT_SECRET'] ?? 'test-og-m2m-client-secret';
 process.env['AUTH0_TOKEN_URL'] = process.env['AUTH0_TOKEN_URL'] ?? 'https://test.auth0.com/oauth/token';

@@ -9,7 +9,8 @@ purpose: >
 
   Idempotence: if was_existing=true (reservation UUID already existed),
   the existing reservation and its stays are returned without inserting
-  new rows. BEGIN → CreateReservation → N × CreateReservationStay → COMMIT.
+  new stay rows. BEGIN → CreateReservation → N × CreateReservationStay
+  (when not existing) → INSERT audit_event (idempotent) → COMMIT.
   Any failure → ROLLBACK. Partial writes are not possible.
 
   Implements the create procedure taxonomy per I16: orchestrating create
@@ -33,6 +34,8 @@ inputs:
   - stays (StayInput[] — array of stay descriptors, min length 1; each with
     accommodation_option_type_uuid, accommodation_option_uuid nullable,
     start_date, end_date, adult_count nullable integer)
+  - auditContext (AuditMutationContext — actor_user_uuid, organisation_uuid,
+    property_uuid, request_id for audit v1 envelope)
 outputs:
   - CreateReservationResult (was_existing: boolean, reservation: { uuid,
     property_uuid, guest_name, check_in, check_out, created_at },
@@ -59,6 +62,8 @@ decision_logic:
     reservation_id; skip stay inserts.
   - If was_existing=false: call CreateReservationStay once per stay input
     passing start_date, end_date, and adult_count.
+  - INSERT audit_event for reservation_created (ON CONFLICT idempotency_key
+    DO NOTHING) after all domain writes and before COMMIT.
   - COMMIT; return { was_existing, reservation, stays }.
   - On any error: ROLLBACK and re-throw.
 relationship_traversal:
@@ -88,9 +93,13 @@ error_behaviour:
 data_dependencies:
   - operational_grace.reservations (via CreateReservation)
   - operational_grace.reservation_stays (via CreateReservationStay)
+  - operational_grace.audit_event (insert — idempotent per idempotency_key)
 side_effects: >
   Inserts one reservation row and N stay rows atomically in a single
-  transaction, or zero rows on idempotent replay.
+  transaction when not idempotent replay; always attempts one audit_event
+  insert (no-op on duplicate idempotency_key). On idempotent replay of an
+  existing reservation, no new reservation or stay rows; audit insert still
+  runs as idempotent no-op when the key already exists.
 invariants:
   - A reservation and all its stays are created atomically. Partial writes
     are not possible.
