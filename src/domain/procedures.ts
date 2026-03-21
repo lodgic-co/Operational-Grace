@@ -72,6 +72,10 @@ export interface OgBundle {
   property_has_any_occupancy_by_date: PropertyHasAnyOccupancyByDate[];
 }
 
+export interface FetchOgBundleDebugLog {
+  debug: (obj: Record<string, unknown>, msg: string) => void;
+}
+
 export interface FetchOgBundleInput {
   propertyUuid: string;
   from: string;
@@ -80,6 +84,8 @@ export interface FetchOgBundleInput {
   compositeAndDualModeAotUuids: string[];
   dualModeAotUuids: string[];
   hasExclusiveUseAots: boolean;
+  /** Optional: structured debug for POST /bundles/occupancy (rebuild verification). */
+  log?: FetchOgBundleDebugLog;
 }
 
 /**
@@ -101,6 +107,7 @@ export async function FetchOgBundle(
     compositeAndDualModeAotUuids,
     dualModeAotUuids,
     hasExclusiveUseAots,
+    log,
   } = input;
 
   if (!propertyUuid) throw InvalidRequest('property_uuid is required');
@@ -108,6 +115,18 @@ export async function FetchOgBundle(
   if (!to) throw InvalidRequest('to is required');
 
   if (expandedAotUuids.length === 0) {
+    log?.debug(
+      {
+        property_uuid: propertyUuid,
+        from,
+        to,
+        occupancy_by_aot_and_date_count: 0,
+        og_state_by_ao_count: 0,
+        unallocated_by_aot_and_date_count: 0,
+        property_has_any_occupancy_by_date_count: 0,
+      },
+      'og_occupancy_bundle_assembled',
+    );
     return {
       occupancy_by_aot_and_date: [],
       og_state_by_ao: [],
@@ -115,6 +134,18 @@ export async function FetchOgBundle(
       property_has_any_occupancy_by_date: [],
     };
   }
+
+  // OG does not derive AOT scope from seeds; SC sends expanded_aot_uuids. Log the
+  // effective query scope for parity with "derived scope" debugging elsewhere.
+  log?.debug(
+    {
+      property_uuid: propertyUuid,
+      derived_aot_uuid_count: expandedAotUuids.length,
+      derived_aot_uuids_sample: expandedAotUuids.slice(0, 10),
+      derived_aot_uuids_truncated: expandedAotUuids.length > 10,
+    },
+    'og_occupancy_bundle_scope_derived',
+  );
 
   // occupancy_by_aot_and_date — merge stays + holds per (AOT, night)
   const staysOccupancy = await pool.query<{
@@ -185,6 +216,28 @@ export async function FetchOgBundle(
     }
   }
   const occupancyByAotAndDate = Array.from(occupancyMap.values());
+
+  const distinctAotInOccupancy = new Set(
+    occupancyByAotAndDate.map((r) => r.accommodation_option_type_uuid),
+  );
+  log?.debug(
+    {
+      property_uuid: propertyUuid,
+      from,
+      to,
+      occupancy_row_count: occupancyByAotAndDate.length,
+      distinct_accommodation_option_type_uuid_count: distinctAotInOccupancy.size,
+      sample_rows: occupancyByAotAndDate.slice(0, 5).map((r) => ({
+        accommodation_option_type_uuid: r.accommodation_option_type_uuid,
+        inventory_night: r.inventory_night,
+        room_stay_count: r.room_stay_count,
+        active_hold_count: r.active_hold_count,
+        room_stay_adults: r.room_stay_adults,
+        active_hold_adults: r.active_hold_adults,
+      })),
+    },
+    'og_occupancy_query_result',
+  );
 
   // og_state_by_ao — composite and dual-mode AOs only
   let ogStateByAo: OgStateByAo[] = [];
@@ -348,12 +401,27 @@ export async function FetchOgBundle(
     }));
   }
 
-  return {
+  const bundle: OgBundle = {
     occupancy_by_aot_and_date: occupancyByAotAndDate,
     og_state_by_ao: ogStateByAo,
     unallocated_by_aot_and_date: unallocatedByAotAndDate,
     property_has_any_occupancy_by_date: propertyHasAnyOccupancyByDate,
   };
+
+  log?.debug(
+    {
+      property_uuid: propertyUuid,
+      from,
+      to,
+      occupancy_by_aot_and_date_count: bundle.occupancy_by_aot_and_date.length,
+      og_state_by_ao_count: bundle.og_state_by_ao.length,
+      unallocated_by_aot_and_date_count: bundle.unallocated_by_aot_and_date.length,
+      property_has_any_occupancy_by_date_count: bundle.property_has_any_occupancy_by_date.length,
+    },
+    'og_occupancy_bundle_assembled',
+  );
+
+  return bundle;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -55,6 +55,22 @@ export async function bundleRoutes(
 
     const pool = environment === 'live' ? livePool : trainingPool;
 
+    request.log.debug(
+      {
+        property_uuid: property_uuid,
+        from,
+        to,
+        environment,
+        aot_uuid_count: expanded_aot_uuids.length,
+        aot_uuids_sample: expanded_aot_uuids.slice(0, 10),
+        aot_uuids_truncated: expanded_aot_uuids.length > 10,
+        composite_and_dual_mode_aot_uuid_count: composite_and_dual_mode_aot_uuids.length,
+        dual_mode_aot_uuid_count: dual_mode_aot_uuids.length,
+        has_exclusive_use_aots: has_exclusive_use_aots,
+      },
+      'og_occupancy_bundle_request',
+    );
+
     const bundle = await FetchOgBundle(pool, {
       propertyUuid: property_uuid,
       from,
@@ -63,6 +79,7 @@ export async function bundleRoutes(
       compositeAndDualModeAotUuids: composite_and_dual_mode_aot_uuids,
       dualModeAotUuids: dual_mode_aot_uuids,
       hasExclusiveUseAots: has_exclusive_use_aots,
+      log: request.log,
     });
 
     return reply.code(200).send(bundle);
