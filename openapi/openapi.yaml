@@ -548,7 +548,11 @@ components:
       required: false
       schema:
         type: string
-      description: Correlation ID for distributed tracing
+      description: >
+        Correlation ID. Propagated as Audit v2 work_id (work_kind request) for
+        terminal audit rows on reservation and hold mutations; echoed on responses
+        when supplied. When omitted, the service derives work_id from trace context
+        or a new UUID.
 
   schemas:
     CreateReservationBody:

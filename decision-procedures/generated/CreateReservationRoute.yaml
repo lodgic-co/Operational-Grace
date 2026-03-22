@@ -34,7 +34,7 @@ inputs:
     start_date, end_date, optional accommodation_option_uuid)
   - X-Actor-User-Uuid, X-Organisation-Uuid, X-Property-Uuid (delegated actor
     headers)
-  - X-Request-Id (optional)
+  - X-Request-Id (optional — propagated as Audit v2 work_id when present)
 outputs:
   - 201 with CreateReservationResult body (was_existing, reservation, stays)
 preconditions:
@@ -59,8 +59,12 @@ error_behaviour:
   - not_found (404) — AssertPropertyPermission denial (non-leakage).
   - bad_gateway (502) — measured-judgement unreachable.
   - internal_error (500) — unexpected database error.
+  - For non-2xx responses on this POST mutation path, the error handler may
+    persist a terminal audit_event row (rejected/failed, idempotency_key NULL)
+    in a separate transaction (I19).
 data_dependencies:
   - Delegated to underlying procedures.
 side_effects: >
   Inserts one reservation and N stays atomically on success (or zero on
-  idempotent replay).
+  idempotent replay). Success-path audit is written inside the domain
+  transaction; terminal non-success audit is not.

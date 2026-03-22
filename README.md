@@ -104,8 +104,6 @@ pnpm test:integration
 
 Inbound requests must carry an Auth0 M2M Bearer token whose `azp` claim is in `AUTH0_ALLOWED_AZP`. Outbound calls to `measured-judgement` use a separate M2M token obtained via the client-credentials grant.
 
-In `development` and `test` environments, `X-Internal-Secret` can substitute for a Bearer token (temporary — will be removed once network isolation is in place).
-
 ## Delegated Actor Context
 
 Every inbound request must include the following delegated actor headers, forwarded by `polite-intervention`:
@@ -116,6 +114,7 @@ Every inbound request must include the following delegated actor headers, forwar
 | `X-Actor-User-Uuid` | Yes | UUID of the authenticated user. |
 | `X-Organisation-Uuid` | Yes | Organisation UUID that the request is scoped to. |
 | `X-Property-Uuid` | Yes | Property UUID that the request is scoped to. Must match the `:property_uuid` path parameter; mismatches return `400 invalid_request`. |
+| `X-Request-Id` | No | Optional inbound correlation. When present, propagated as Audit v2 `work_id` (with `work_kind` `request`) for mutation routes and echoed on responses; when absent, derived from trace context or a new UUID. |
 
 **Actor type constraint:** This service hard-rejects any actor type other than `user`. Service, system, and anonymous actors are not permitted.
 
@@ -135,3 +134,7 @@ Every inbound request must include the following delegated actor headers, forwar
 4. On grant, proceed with the reservation query.
 
 `measured-judgement` is the authoritative permission authority. This service does not maintain local permission tables or role data.
+
+## Audit (Audit v2)
+
+This service persists **terminal audit** rows for reservation and hold mutations in the local `audit_event` table (live and training schemas). Success-path rows are written in the same transaction as domain commits; rejection and failure outcomes use a separate committed transaction before the HTTP response, per platform rule I19 and `rules/platform-rules/contracts/audit-event-v2.yaml`. This is **not** a domain data store — it records outcomes only.

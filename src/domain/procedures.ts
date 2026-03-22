@@ -3,7 +3,7 @@ import type { Span } from '@opentelemetry/api';
 import { encodeCursor, decodeCursor } from './cursor.js';
 import { AppError, NotFound, BadGateway, InvalidRequest, Unauthenticated } from '../errors/index.js';
 import type { MeasuredJudgementClient } from '../http/measured-judgement-client.js';
-import { insertAuditEventRow, type AuditMutationContext } from './audit-persist.js';
+import { insertTerminalSuccessAudit, type AuditMutationContext } from './audit-persist.js';
 import * as AuditPure from './audit.js';
 
 export type { AuditMutationContext } from './audit-persist.js';
@@ -633,18 +633,22 @@ export async function CreateReservationWithStays(
     }
 
     const auditNow = new Date();
-    await insertAuditEventRow(trx, {
+    await insertTerminalSuccessAudit(trx, {
       idempotencyKey: AuditPure.reservationIdempotencyKey(reservationUuid),
-      eventName: 'reservation_created',
+      eventName: 'reservation_create',
       occurredAt: auditNow,
       recordedAt: auditNow,
+      actorType: 'user',
       actorUserUuid: auditContext.actorUserUuid,
       executorService: AuditPure.EXECUTOR_SERVICE,
       organisationUuid: auditContext.organisationUuid,
       propertyUuid: auditContext.propertyUuid,
       targetType: 'reservation',
       targetUuid: reservationUuid,
-      requestId: auditContext.requestId,
+      workId: auditContext.workId,
+      workKind: 'request',
+      outcomeFamily: 'success',
+      outcome: was_existing ? 'replayed' : 'succeeded',
       metadata: AuditPure.reservationAuditMetadata(checkIn, checkOut),
       changeSet: null,
     });
@@ -755,18 +759,22 @@ export async function CreateHold(
 
     const holdRow = selectResult.rows[0] as HoldRow;
     const auditNow = new Date();
-    await insertAuditEventRow(trx, {
+    await insertTerminalSuccessAudit(trx, {
       idempotencyKey: AuditPure.holdIdempotencyKey(holdUuid),
-      eventName: 'hold_created',
+      eventName: 'hold_create',
       occurredAt: auditNow,
       recordedAt: auditNow,
+      actorType: 'user',
       actorUserUuid: auditContext.actorUserUuid,
       executorService: AuditPure.EXECUTOR_SERVICE,
       organisationUuid: auditContext.organisationUuid,
       propertyUuid: auditContext.propertyUuid,
       targetType: 'hold',
       targetUuid: holdUuid,
-      requestId: auditContext.requestId,
+      workId: auditContext.workId,
+      workKind: 'request',
+      outcomeFamily: 'success',
+      outcome: was_existing ? 'replayed' : 'succeeded',
       metadata: AuditPure.holdAuditMetadata({
         check_in: holdRow.check_in,
         check_out: holdRow.check_out,
