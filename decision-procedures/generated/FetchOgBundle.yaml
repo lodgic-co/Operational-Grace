@@ -21,7 +21,7 @@ inputs:
   - expandedAotUuids (string[]): all AOT UUIDs in the OG rebuild scope
   - compositeAndDualModeAotUuids (string[]): AOTs needing og_state_by_ao query
   - dualModeAotUuids (string[]): AOTs needing unallocated_by_aot_and_date query
-  - hasExclusiveUseAots (boolean): whether to run property_has_any_occupancy_by_date query
+  - hasExclusiveUseAots (boolean): whether to run property-level night queries (exclusive_use slice + SC EU-block signal)
 outputs:
   - OgBundle (see OgBundle interface in src/domain/procedures.ts)
 decision_logic:
@@ -29,7 +29,11 @@ decision_logic:
   - Query occupancy_by_aot_and_date: separate stays + holds queries, merge in application.
   - If compositeAndDualModeAotUuids non-empty: query og_state_by_ao.
   - If dualModeAotUuids non-empty: query unallocated_by_aot_and_date (separate stays + holds, merge).
-  - If hasExclusiveUseAots: query property_has_any_occupancy_by_date via EXISTS.
+  - If hasExclusiveUseAots:
+      - query property_has_any_occupancy_by_date via EXISTS (any stay or active hold on the property night).
+      - query exclusive_use_occupied_or_held_by_date: per-night EXISTS for stays/holds on
+        accommodation_option_types with sale_basis = exclusive_use only (joins reservation_stays/holds
+        to accommodation_option_types). Used by SC to zero non–exclusive_use variants when true.
   - Return assembled OgBundle.
 error_behaviour:
   - invalid_request (400): missing required inputs.
