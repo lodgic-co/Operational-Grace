@@ -7,6 +7,11 @@ import { join } from 'node:path';
  * unrelated shell exports so tests target the approved local Postgres runtime.
  */
 function applyEnvTestLocalIfPresent(): void {
+  // Do not override DATABASE_* in CI (e.g. GitHub Actions postgres:ci). A tracked
+  // .env.test.local may use local-docker credentials (lodgic) and would break tests.
+  if (process.env['CI'] === 'true' || process.env['GITHUB_ACTIONS'] === 'true') {
+    return;
+  }
   const p = join(process.cwd(), '.env.test.local');
   if (!existsSync(p)) return;
   const raw = readFileSync(p, 'utf8');
