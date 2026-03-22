@@ -8,7 +8,9 @@ purpose: >
   Returns the hold record and a was_existing flag.
 
   BEGIN → INSERT holds ON CONFLICT (uuid) DO NOTHING → SELECT → INSERT
-  audit_event (idempotent) → COMMIT. Any failure → ROLLBACK.
+  audit_event (Audit v2 terminal success; partial unique idempotency) → COMMIT.
+  Any failure → ROLLBACK. Terminal HTTP failures are audited in a separate
+  transaction in the error handler (I19), not here.
 
   Implements the create procedure taxonomy per I16: new entity creation,
   owns the transaction, client-supplied UUID for idempotence.
@@ -34,7 +36,7 @@ inputs:
   - checkOut (string ISO date YYYY-MM-DD — must be > checkIn)
   - expiresAt (string ISO 8601 datetime — hold expiry timestamp)
   - auditContext (AuditMutationContext — actor_user_uuid, organisation_uuid,
-    property_uuid, request_id for audit v1 envelope)
+    property_uuid, work_id; work_kind request on success path)
 outputs:
   - hold (HoldRow — uuid, property_uuid, accommodation_option_type_uuid,
     accommodation_option_uuid, check_in, check_out, expires_at, created_at)
@@ -51,8 +53,8 @@ decision_logic:
     ON CONFLICT (uuid) DO NOTHING.
   - was_existing = (insertResult.rowCount === 0).
   - SELECT the hold row by uuid (works for both new and pre-existing).
-  - INSERT audit_event for hold_created (ON CONFLICT idempotency_key DO
-    NOTHING) before COMMIT.
+  - INSERT audit_event for event_name hold_create (ON CONFLICT (idempotency_key)
+    WHERE outcome IN ('succeeded', 'replayed') DO NOTHING) before COMMIT.
   - COMMIT; return { hold, was_existing }.
   - On any error: ROLLBACK and re-throw.
 relationship_traversal:
@@ -74,11 +76,12 @@ error_behaviour:
 data_dependencies:
   - operational_grace.holds (write — INSERT ON CONFLICT DO NOTHING, then
     SELECT)
-  - operational_grace.audit_event (insert — idempotent per idempotency_key)
+  - operational_grace.audit_event (insert — idempotent per idempotency_key for
+    terminal success outcomes)
 side_effects: >
   Inserts zero or one row into holds depending on whether the uuid already
-  exists; always attempts one audit_event insert (no-op on duplicate
-  idempotency_key).
+  exists; always attempts one terminal-success audit_event insert (no-op on
+  duplicate idempotency_key for succeeded/replayed).
 invariants:
   - Client-supplied UUID idempotence: repeated calls with the same holdUuid
     are safe and produce the same hold row.

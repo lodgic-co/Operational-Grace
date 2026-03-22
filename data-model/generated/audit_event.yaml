@@ -1,0 +1,127 @@
+id: audit_event
+entity_name: audit_event
+owning_service: operational-grace
+persistence_object: operational_grace.audit_event
+tenant_scope: property
+mutability: append_only
+primary_key: [audit_event_uuid]
+foreign_keys: []
+unique_constraints: []
+indexes:
+  - name: audit_event_idempotency_success_uidx
+    columns: [idempotency_key]
+    unique: true
+    partial: true
+    where: "outcome IN ('succeeded', 'replayed') AND idempotency_key IS NOT NULL"
+    purpose: >
+      Idempotent success/replayed inserts only: duplicate idempotency_key for a
+      terminal success outcome is a no-op (ON CONFLICT DO NOTHING). Failures and
+      rejections omit idempotency_key and do not participate in this index.
+table_constraints:
+  - name: audit_event_outcome_v2_check
+    definition: CHECK (outcome IN ('succeeded', 'replayed', 'rejected', 'failed'))
+  - name: audit_event_outcome_family_v2_check
+    definition: CHECK (outcome_family IN ('success', 'rejection', 'failure'))
+  - name: audit_event_outcome_family_align_check
+    definition: >
+      CHECK ((outcome IN ('succeeded', 'replayed') AND outcome_family = 'success')
+      OR (outcome = 'rejected' AND outcome_family = 'rejection')
+      OR (outcome = 'failed' AND outcome_family = 'failure'))
+  - name: audit_event_reason_code_v2_check
+    definition: >
+      CHECK ((outcome IN ('succeeded', 'replayed') AND reason_code IS NULL)
+      OR (outcome IN ('rejected', 'failed') AND reason_code IS NOT NULL))
+  - name: audit_event_actor_user_v2_check
+    definition: >
+      CHECK ((actor_type = 'user' AND actor_user_uuid IS NOT NULL)
+      OR (actor_type <> 'user' AND actor_user_uuid IS NULL))
+fields:
+  - name: audit_event_uuid
+    type: uuid
+    nullable: false
+    default: gen_random_uuid()
+    public_identifier: true
+    notes: Primary key for each audit row.
+  - name: idempotency_key
+    type: text
+    nullable: true
+    notes: >
+      Present for success-path terminal rows tied to a mutation idempotency key
+      (e.g. operational-grace:reservation_create:<uuid>). Omitted (NULL) for
+      terminal rejection/failure rows written in a separate transaction (I19).
+  - name: event_name
+    type: text
+    nullable: false
+    notes: >
+      Operation name per contracts/audit-event-v2.yaml (e.g. reservation_create,
+      hold_create).
+  - name: occurred_at
+    type: timestamptz
+    nullable: false
+    notes: Domain time of the outcome.
+  - name: recorded_at
+    type: timestamptz
+    nullable: false
+    notes: Insert time at the executor.
+  - name: actor_user_uuid
+    type: uuid
+    nullable: true
+    notes: Required when actor_type is user; otherwise NULL.
+  - name: actor_type
+    type: text
+    nullable: false
+    default: user
+    notes: user | service | system | anonymous. Database DEFAULT 'user'.
+  - name: executor_service
+    type: text
+    nullable: false
+    notes: Always operational-grace for this table.
+  - name: organisation_uuid
+    type: uuid
+    nullable: true
+    notes: Delegated tenant context when known; may be NULL on some failure paths.
+  - name: property_uuid
+    type: uuid
+    nullable: true
+    notes: Property scope when known; may be NULL on some failure paths.
+  - name: target_type
+    type: text
+    nullable: false
+    notes: e.g. reservation, hold.
+  - name: target_uuid
+    type: uuid
+    nullable: true
+    notes: Target entity UUID when known; failure-path rows may use NULL.
+  - name: work_id
+    type: text
+    nullable: false
+    notes: >
+      Correlates to inbound X-Request-Id (or derived trace/UUID). Renamed from
+      request_id in Audit v2 migration 202603230001_audit_event_v2.
+  - name: work_kind
+    type: text
+    nullable: false
+    default: request
+    notes: request | job | workflow_step | system_action. Database DEFAULT 'request'.
+  - name: outcome_family
+    type: text
+    nullable: false
+    default: success
+    notes: success | rejection | failure; must align with outcome. Database DEFAULT 'success'.
+  - name: outcome
+    type: text
+    nullable: false
+    notes: succeeded | replayed | rejected | failed.
+  - name: metadata
+    type: jsonb
+    nullable: false
+    default: '{}'
+    notes: Structural, non-PII payload per operation. Database DEFAULT '{}'::jsonb.
+  - name: reason_code
+    type: text
+    nullable: true
+    notes: Required when outcome is rejected or failed; NULL for success outcomes.
+  - name: change_set
+    type: jsonb
+    nullable: true
+    notes: Optional structured change list on success paths when applicable.

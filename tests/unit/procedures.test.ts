@@ -101,10 +101,10 @@ const PROP = '44444444-4444-4444-a444-444444444444';
 const OPT_TYPE = '55555555-5555-4555-a555-555555555555';
 
 const AUDIT_CTX = {
+  workId: REQUEST_ID,
   actorUserUuid: ACTOR_UUID,
   organisationUuid: ORG_UUID,
   propertyUuid: PROP,
-  requestId: REQUEST_ID,
 };
 
 describe('CreateReservationWithStays — pre-check validation', () => {

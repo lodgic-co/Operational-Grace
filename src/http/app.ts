@@ -30,7 +30,7 @@ export function createApp(opts: CreateAppOptions) {
 
   registerRequestId(app);
   registerCorrelationHeader(app);
-  registerErrorHandler(app);
+  registerErrorHandler(app, { livePool: opts.livePool, trainingPool: opts.trainingPool });
 
   app.register(healthRoutes);
   app.register(internalRoutes);

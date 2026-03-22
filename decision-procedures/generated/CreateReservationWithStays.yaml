@@ -10,8 +10,13 @@ purpose: >
   Idempotence: if was_existing=true (reservation UUID already existed),
   the existing reservation and its stays are returned without inserting
   new stay rows. BEGIN → CreateReservation → N × CreateReservationStay
-  (when not existing) → INSERT audit_event (idempotent) → COMMIT.
-  Any failure → ROLLBACK. Partial writes are not possible.
+  (when not existing) → INSERT audit_event (Audit v2 terminal success —
+  outcome succeeded or replayed, partial unique index on idempotency_key) →
+  COMMIT. Any failure → ROLLBACK. Partial writes are not possible.
+
+  Terminal rejection/failure outcomes for HTTP errors are not written here;
+  they use a separate short transaction in the error handler (I19), with
+  idempotency_key NULL.
 
   Implements the create procedure taxonomy per I16: orchestrating create
   that owns the transaction, client-supplied UUID for idempotence.
@@ -35,7 +40,7 @@ inputs:
     accommodation_option_type_uuid, accommodation_option_uuid nullable,
     start_date, end_date, adult_count nullable integer)
   - auditContext (AuditMutationContext — actor_user_uuid, organisation_uuid,
-    property_uuid, request_id for audit v1 envelope)
+    property_uuid, work_id; work_kind request on success path)
 outputs:
   - CreateReservationResult (was_existing: boolean, reservation: { uuid,
     property_uuid, guest_name, check_in, check_out, created_at },
@@ -62,8 +67,9 @@ decision_logic:
     reservation_id; skip stay inserts.
   - If was_existing=false: call CreateReservationStay once per stay input
     passing start_date, end_date, and adult_count.
-  - INSERT audit_event for reservation_created (ON CONFLICT idempotency_key
-    DO NOTHING) after all domain writes and before COMMIT.
+  - INSERT audit_event for event_name reservation_create (ON CONFLICT (idempotency_key)
+    WHERE outcome IN ('succeeded', 'replayed') DO NOTHING) after all domain writes
+    and before COMMIT.
   - COMMIT; return { was_existing, reservation, stays }.
   - On any error: ROLLBACK and re-throw.
 relationship_traversal:
@@ -93,13 +99,14 @@ error_behaviour:
 data_dependencies:
   - operational_grace.reservations (via CreateReservation)
   - operational_grace.reservation_stays (via CreateReservationStay)
-  - operational_grace.audit_event (insert — idempotent per idempotency_key)
+  - operational_grace.audit_event (insert — idempotent per idempotency_key on
+    success outcomes only via partial unique index)
 side_effects: >
   Inserts one reservation row and N stay rows atomically in a single
-  transaction when not idempotent replay; always attempts one audit_event
-  insert (no-op on duplicate idempotency_key). On idempotent replay of an
-  existing reservation, no new reservation or stay rows; audit insert still
-  runs as idempotent no-op when the key already exists.
+  transaction when not idempotent replay; always attempts one terminal-success
+  audit_event insert (no-op on duplicate idempotency_key for succeeded/replayed).
+  On idempotent replay of an existing reservation, no new reservation or stay rows;
+  audit insert still runs as idempotent no-op when the key already exists.
 invariants:
   - A reservation and all its stays are created atomically. Partial writes
     are not possible.

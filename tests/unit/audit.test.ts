@@ -6,19 +6,19 @@ import {
   reservationAuditMetadata,
 } from '../../src/domain/audit.js';
 
-describe('audit v1 pure helpers', () => {
+describe('audit pure helpers (v2 operation names)', () => {
   it('builds executor service constant', () => {
     expect(EXECUTOR_SERVICE).toBe('operational-grace');
   });
 
   it('builds stable reservation idempotency key', () => {
     const u = '88888888-8888-4888-a888-888888888888';
-    expect(reservationIdempotencyKey(u)).toBe(`operational-grace:reservation_created:${u}`);
+    expect(reservationIdempotencyKey(u)).toBe(`operational-grace:reservation_create:${u}`);
   });
 
   it('builds stable hold idempotency key', () => {
     const u = '99999999-9999-4999-a999-999999999999';
-    expect(holdIdempotencyKey(u)).toBe(`operational-grace:hold_created:${u}`);
+    expect(holdIdempotencyKey(u)).toBe(`operational-grace:hold_create:${u}`);
   });
 
   it('reservation metadata has no guest name', () => {

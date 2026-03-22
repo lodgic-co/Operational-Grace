@@ -178,10 +178,10 @@ export async function reservationRoutes(
       check_out,
       stayInputs,
       {
+        workId: request.requestId,
         actorUserUuid: actor.actorUserUuid,
         organisationUuid: actor.organisationUuid,
         propertyUuid: property_uuid,
-        requestId: request.requestId,
       },
     );
 

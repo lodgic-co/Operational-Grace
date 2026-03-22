@@ -32,7 +32,7 @@ inputs:
   - check_out (body ISO date YYYY-MM-DD)
   - X-Actor-User-Uuid, X-Organisation-Uuid, X-Property-Uuid (delegated
     actor headers)
-  - X-Request-Id (optional)
+  - X-Request-Id (optional — propagated as Audit v2 work_id when present)
 outputs:
   - 201 with { hold: HoldRow } body
 preconditions:
@@ -52,7 +52,11 @@ error_behaviour:
   - not_found (404) — AssertPropertyPermission denial (non-leakage).
   - bad_gateway (502) — measured-judgement unreachable.
   - internal_error (500) — unexpected database error.
+  - For non-2xx responses on this POST mutation path, the error handler may
+    persist a terminal audit_event row (rejected/failed, idempotency_key NULL)
+    in a separate transaction (I19).
 data_dependencies:
   - Delegated to underlying procedures.
 side_effects: >
-  Inserts zero or one row into holds (zero on idempotent replay).
+  Inserts zero or one row into holds (zero on idempotent replay). Success-path
+  audit is inside the domain transaction; terminal non-success audit is not.
