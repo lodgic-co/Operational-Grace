@@ -86,23 +86,12 @@ beforeAll(async () => {
     )
     ON CONFLICT (uuid) DO NOTHING
   `, [AOT_UUID, AO_UUID, STAY_START, STAY_END]);
-
-  // FetchOgBundle joins stays/holds to this catalog row to classify exclusive_use occupancy.
-  await pool.query(
-    `
-    INSERT INTO accommodation_option_types (uuid, property_uuid, sale_basis)
-    VALUES ($1::uuid, $2::uuid, 'per_unit')
-    ON CONFLICT (uuid) DO NOTHING
-  `,
-    [AOT_UUID, PROP_UUID],
-  );
 });
 
 afterAll(async () => {
   // Clean up fixture data so reruns are idempotent.
   await pool.query(`DELETE FROM reservation_stays WHERE uuid = 'f3000000-0000-4000-a000-000000000011'::uuid`);
   await pool.query(`DELETE FROM reservations WHERE uuid = 'f3000000-0000-4000-a000-000000000010'::uuid`);
-  await pool.query(`DELETE FROM accommodation_option_types WHERE uuid = $1::uuid`, [AOT_UUID]);
   await pool.end();
 });
 
@@ -187,56 +176,13 @@ describe('FetchOgBundle — boolean field types', () => {
   });
 
   it('property_has_any_occupancy inventory_night is a plain YYYY-MM-DD string', async () => {
-    // The exclusive_use query also uses generate_series; same date-format risk.
+    // The property_has_any_occupancy query uses generate_series; same date-format risk.
     const bundle = await FetchOgBundle(pool, { ...baseInput(), hasExclusiveUseAots: true });
 
     for (const entry of bundle.property_has_any_occupancy_by_date) {
       expect(entry.inventory_night).toMatch(ISO_DATE_RE);
       expect(entry.inventory_night).not.toContain(' ');
       expect(entry.inventory_night).not.toContain('+');
-    }
-  });
-
-  it('exclusive_use_occupied_or_held is a native boolean when hasExclusiveUseAots', async () => {
-    const bundle = await FetchOgBundle(pool, { ...baseInput(), hasExclusiveUseAots: true });
-
-    expect(bundle.exclusive_use_occupied_or_held_by_date.length).toBeGreaterThan(0);
-
-    for (const entry of bundle.exclusive_use_occupied_or_held_by_date) {
-      expect(typeof entry.exclusive_use_occupied_or_held).toBe('boolean');
-      expect(entry.inventory_night).toMatch(ISO_DATE_RE);
-    }
-  });
-});
-
-describe('FetchOgBundle — exclusive_use_occupied_or_held_by_date semantics', () => {
-  afterEach(async () => {
-    await pool.query(`UPDATE accommodation_option_types SET sale_basis = 'per_unit' WHERE uuid = $1::uuid`, [
-      AOT_UUID,
-    ]);
-  });
-
-  it('non–exclusive_use stay does not set exclusive_use_occupied_or_held', async () => {
-    await pool.query(`UPDATE accommodation_option_types SET sale_basis = 'per_unit' WHERE uuid = $1::uuid`, [
-      AOT_UUID,
-    ]);
-
-    const bundle = await FetchOgBundle(pool, { ...baseInput(), hasExclusiveUseAots: true });
-
-    for (const entry of bundle.exclusive_use_occupied_or_held_by_date) {
-      expect(entry.exclusive_use_occupied_or_held).toBe(false);
-    }
-  });
-
-  it('exclusive_use stay sets exclusive_use_occupied_or_held for covered nights', async () => {
-    await pool.query(`UPDATE accommodation_option_types SET sale_basis = 'exclusive_use' WHERE uuid = $1::uuid`, [
-      AOT_UUID,
-    ]);
-
-    const bundle = await FetchOgBundle(pool, { ...baseInput(), hasExclusiveUseAots: true });
-
-    for (const entry of bundle.exclusive_use_occupied_or_held_by_date) {
-      expect(entry.exclusive_use_occupied_or_held).toBe(true);
     }
   });
 });

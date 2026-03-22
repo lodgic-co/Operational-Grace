@@ -65,22 +65,11 @@ export interface PropertyHasAnyOccupancyByDate {
   property_has_any_occupancy: boolean;
 }
 
-/** True when a stay or active hold on an accommodation_option_type with sale_basis = exclusive_use covers the night. */
-export interface ExclusiveUseOccupiedOrHeldByDate {
-  inventory_night: string;
-  exclusive_use_occupied_or_held: boolean;
-}
-
 export interface OgBundle {
   occupancy_by_aot_and_date: OccupancyByAotAndDate[];
   og_state_by_ao: OgStateByAo[];
   unallocated_by_aot_and_date: UnallocatedByAotAndDate[];
   property_has_any_occupancy_by_date: PropertyHasAnyOccupancyByDate[];
-  /**
-   * Per-night signal for exclusive_use stays/holds only (joined via accommodation_option_types.sale_basis).
-   * Non–exclusive_use availability in SC short-circuits to 0 when true for that property night.
-   */
-  exclusive_use_occupied_or_held_by_date: ExclusiveUseOccupiedOrHeldByDate[];
 }
 
 export interface FetchOgBundleDebugLog {
@@ -135,7 +124,6 @@ export async function FetchOgBundle(
         og_state_by_ao_count: 0,
         unallocated_by_aot_and_date_count: 0,
         property_has_any_occupancy_by_date_count: 0,
-        exclusive_use_occupied_or_held_by_date_count: 0,
       },
       'og_occupancy_bundle_assembled',
     );
@@ -144,7 +132,6 @@ export async function FetchOgBundle(
       og_state_by_ao: [],
       unallocated_by_aot_and_date: [],
       property_has_any_occupancy_by_date: [],
-      exclusive_use_occupied_or_held_by_date: [],
     };
   }
 
@@ -381,7 +368,6 @@ export async function FetchOgBundle(
 
   // property_has_any_occupancy_by_date — any stay or hold anywhere on the property (exclusive_use slice)
   let propertyHasAnyOccupancyByDate: PropertyHasAnyOccupancyByDate[] = [];
-  let exclusiveUseOccupiedOrHeldByDate: ExclusiveUseOccupiedOrHeldByDate[] = [];
   if (hasExclusiveUseAots) {
     const phaoResult = await pool.query<{
       inventory_night: string;
@@ -413,42 +399,6 @@ export async function FetchOgBundle(
       inventory_night: r.inventory_night,
       property_has_any_occupancy: r.property_has_any_occupancy,
     }));
-
-    const euResult = await pool.query<{
-      inventory_night: string;
-      exclusive_use_occupied_or_held: boolean;
-    }>(
-      `SELECT d.inventory_night::date::text,
-              (
-                EXISTS (
-                  SELECT 1
-                  FROM   reservation_stays rs
-                  JOIN   reservations r ON r.id = rs.reservation_id
-                  JOIN   accommodation_option_types aot ON aot.uuid = rs.accommodation_option_type_uuid
-                  CROSS JOIN generate_series(rs.start_date, rs.end_date, '1 day') AS n(night)
-                  WHERE  r.property_uuid = $1::uuid
-                    AND  aot.sale_basis = 'exclusive_use'
-                    AND  n.night = d.inventory_night
-                )
-                OR EXISTS (
-                  SELECT 1
-                  FROM   holds h
-                  JOIN   accommodation_option_types aot ON aot.uuid = h.accommodation_option_type_uuid
-                  CROSS JOIN generate_series(h.check_in, h.check_out - interval '1 day', '1 day') AS n(night)
-                  WHERE  h.property_uuid = $1::uuid
-                    AND  aot.sale_basis = 'exclusive_use'
-                    AND  n.night = d.inventory_night
-                    AND  h.expires_at > now()
-                )
-              ) AS exclusive_use_occupied_or_held
-       FROM   generate_series($2::date, $3::date, '1 day') AS d(inventory_night)`,
-      [propertyUuid, from, to],
-    );
-
-    exclusiveUseOccupiedOrHeldByDate = euResult.rows.map((r) => ({
-      inventory_night: r.inventory_night,
-      exclusive_use_occupied_or_held: r.exclusive_use_occupied_or_held,
-    }));
   }
 
   const bundle: OgBundle = {
@@ -456,7 +406,6 @@ export async function FetchOgBundle(
     og_state_by_ao: ogStateByAo,
     unallocated_by_aot_and_date: unallocatedByAotAndDate,
     property_has_any_occupancy_by_date: propertyHasAnyOccupancyByDate,
-    exclusive_use_occupied_or_held_by_date: exclusiveUseOccupiedOrHeldByDate,
   };
 
   log?.debug(
@@ -468,7 +417,6 @@ export async function FetchOgBundle(
       og_state_by_ao_count: bundle.og_state_by_ao.length,
       unallocated_by_aot_and_date_count: bundle.unallocated_by_aot_and_date.length,
       property_has_any_occupancy_by_date_count: bundle.property_has_any_occupancy_by_date.length,
-      exclusive_use_occupied_or_held_by_date_count: bundle.exclusive_use_occupied_or_held_by_date.length,
     },
     'og_occupancy_bundle_assembled',
   );
