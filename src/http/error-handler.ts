@@ -58,9 +58,9 @@ async function persistTerminalAuditIfApplicable(
 
   const mapped = mappedOverride ?? mapErrorToTerminalAudit(error);
   const actor = defaultActorForFailure({
-    actorUserUuid: request.actorUserUuid,
-    organisationUuid: request.organisationUuid,
-    propertyUuid: request.propertyUuid,
+    auditActorUserUuid: request.auditActorUserUuid,
+    auditOrganisationUuid: request.auditOrganisationUuid,
+    auditPropertyUuid: request.auditPropertyUuid,
   });
   const now = new Date();
   await persistTerminalNonSuccessAudit(inferred.pool, {

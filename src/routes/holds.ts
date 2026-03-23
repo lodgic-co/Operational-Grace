@@ -76,9 +76,9 @@ export async function holdRoutes(
       throw InvalidRequest('X-Property-Uuid must match property_uuid path parameter');
     }
 
-    request.actorUserUuid = actor.actorUserUuid;
-    request.organisationUuid = actor.organisationUuid;
-    request.propertyUuid = property_uuid;
+    request.auditActorUserUuid = actor.actorUserUuid;
+    request.auditOrganisationUuid = actor.organisationUuid;
+    request.auditPropertyUuid = property_uuid;
     request.environment = environment;
 
     await AssertPropertyPermission(

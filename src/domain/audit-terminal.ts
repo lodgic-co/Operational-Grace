@@ -39,22 +39,22 @@ export function mapErrorToTerminalAudit(error: unknown): MappedTerminalAudit {
 }
 
 export function defaultActorForFailure(request: {
-  actorUserUuid?: string;
-  organisationUuid?: string;
-  propertyUuid?: string;
+  auditActorUserUuid?: string;
+  auditOrganisationUuid?: string;
+  auditPropertyUuid?: string;
 }): { actorType: AuditActorType; actorUserUuid: string | null; organisationUuid: string | null; propertyUuid: string | null } {
-  if (request.actorUserUuid) {
+  if (request.auditActorUserUuid) {
     return {
       actorType: 'user',
-      actorUserUuid: request.actorUserUuid,
-      organisationUuid: request.organisationUuid ?? null,
-      propertyUuid: request.propertyUuid ?? null,
+      actorUserUuid: request.auditActorUserUuid,
+      organisationUuid: request.auditOrganisationUuid ?? null,
+      propertyUuid: request.auditPropertyUuid ?? null,
     };
   }
   return {
     actorType: 'anonymous',
     actorUserUuid: null,
-    organisationUuid: request.organisationUuid ?? null,
-    propertyUuid: request.propertyUuid ?? null,
+    organisationUuid: request.auditOrganisationUuid ?? null,
+    propertyUuid: request.auditPropertyUuid ?? null,
   };
 }

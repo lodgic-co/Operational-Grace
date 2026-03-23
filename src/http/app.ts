@@ -15,6 +15,9 @@ import type { MeasuredJudgementClient } from './measured-judgement-client.js';
 declare module 'fastify' {
   interface FastifyRequest {
     inboundSpan: Span | null;
+    auditActorUserUuid?: string;
+    auditOrganisationUuid?: string;
+    auditPropertyUuid?: string;
   }
 }
 
@@ -73,9 +76,9 @@ export function createApp(opts: CreateAppOptions) {
   app.decorateRequest('inboundSpan', null);
   app.decorateRequest('callerServiceId', '');
   app.decorateRequest('errorCode', undefined);
-  app.decorateRequest('actorUserUuid', undefined);
-  app.decorateRequest('organisationUuid', undefined);
-  app.decorateRequest('propertyUuid', undefined);
+  app.decorateRequest('auditActorUserUuid', undefined);
+  app.decorateRequest('auditOrganisationUuid', undefined);
+  app.decorateRequest('auditPropertyUuid', undefined);
   app.decorateRequest('environment', undefined);
 
   app.addHook('onRequest', async (request, reply) => {
@@ -109,9 +112,9 @@ export function createApp(opts: CreateAppOptions) {
     };
     if (request.callerServiceId) log.caller_service_id = request.callerServiceId;
     if (request.errorCode) log.error_code = request.errorCode;
-    if (request.actorUserUuid) log.actor_user_uuid = request.actorUserUuid;
-    if (request.organisationUuid) log.organisation_uuid = request.organisationUuid;
-    if (request.propertyUuid) log.property_uuid = request.propertyUuid;
+    if (request.auditActorUserUuid) log.actor_user_uuid = request.auditActorUserUuid;
+    if (request.auditOrganisationUuid) log.organisation_uuid = request.auditOrganisationUuid;
+    if (request.auditPropertyUuid) log.property_uuid = request.auditPropertyUuid;
     if (request.environment) log.environment = request.environment;
 
     request.log.info(log, 'request_completed');

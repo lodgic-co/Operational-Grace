@@ -50,7 +50,7 @@ export async function bundleRoutes(
       has_exclusive_use_aots,
     } = parsed.data;
 
-    request.propertyUuid = property_uuid;
+    request.auditPropertyUuid = property_uuid;
     request.environment = environment;
 
     const pool = environment === 'live' ? livePool : trainingPool;
