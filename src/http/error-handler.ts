@@ -9,6 +9,7 @@ import {
   defaultActorForFailure,
   type MappedTerminalAudit,
 } from '../domain/audit-terminal.js';
+import { ogMutationPathBusinessMode } from '../domain/audit-mode.js';
 
 const EXECUTOR_SERVICE = 'operational-grace' as const;
 
@@ -24,17 +25,24 @@ function inferOgMutationAudit(
   request: FastifyRequest,
   livePool: Pool,
   trainingPool: Pool,
-): { pool: Pool; eventName: 'reservation_create' | 'hold_create'; targetType: 'reservation' | 'hold' } | null {
+): {
+  pool: Pool;
+  eventName: 'reservation_create' | 'hold_create';
+  targetType: 'reservation' | 'hold';
+  mode: 'live' | 'training';
+} | null {
   if (request.method !== 'POST') return null;
   const path = request.url.split('?')[0] ?? request.url;
   const m = path.match(/^\/(live|training)\/properties\/[0-9a-f-]{36}\/(reservations|holds)\/?$/i);
   if (!m) return null;
   const env = m[1]!.toLowerCase();
   const pool = env === 'live' ? livePool : trainingPool;
+  const mode = ogMutationPathBusinessMode(path);
+  if (mode === null) return null;
   if (m[2]!.toLowerCase() === 'reservations') {
-    return { pool, eventName: 'reservation_create', targetType: 'reservation' };
+    return { pool, eventName: 'reservation_create', targetType: 'reservation', mode };
   }
-  return { pool, eventName: 'hold_create', targetType: 'hold' };
+  return { pool, eventName: 'hold_create', targetType: 'hold', mode };
 }
 
 async function persistTerminalAuditIfApplicable(
@@ -68,6 +76,7 @@ async function persistTerminalAuditIfApplicable(
     targetUuid: null,
     workId: reqId,
     workKind: 'request',
+    mode: inferred.mode,
     outcomeFamily: mapped.outcomeFamily,
     outcome: mapped.outcome,
     reasonCode: mapped.reasonCode,

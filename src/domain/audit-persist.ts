@@ -2,6 +2,9 @@ import type { Pool, PoolClient } from 'pg';
 
 export type AuditActorType = 'user' | 'service' | 'system' | 'anonymous';
 
+/** Business/runtime mode for the unit of work (live vs training operational context), not deployment environment. */
+export type AuditBusinessMode = 'live' | 'training' | 'none';
+
 /** Success-path mutation audit context (user-identified delegated actor on reservation/hold routes). */
 export interface AuditMutationContext {
   workId: string;
@@ -24,6 +27,7 @@ export interface TerminalSuccessAuditInput {
   targetUuid: string | null;
   workId: string;
   workKind: 'request' | 'job' | 'workflow_step' | 'system_action';
+  mode: AuditBusinessMode;
   outcomeFamily: 'success';
   outcome: 'succeeded' | 'replayed';
   metadata: Record<string, unknown>;
@@ -43,6 +47,7 @@ export interface TerminalNonSuccessAuditInput {
   targetUuid: string | null;
   workId: string;
   workKind: 'request' | 'job' | 'workflow_step' | 'system_action';
+  mode: AuditBusinessMode;
   outcomeFamily: 'rejection' | 'failure';
   outcome: 'rejected' | 'failed';
   reasonCode: string;
@@ -59,11 +64,11 @@ export async function insertTerminalSuccessAudit(trx: PoolClient, input: Termina
     `INSERT INTO audit_event (
        idempotency_key, event_name, occurred_at, recorded_at,
        actor_user_uuid, actor_type, executor_service, organisation_uuid, property_uuid,
-       target_type, target_uuid, work_id, work_kind, outcome_family, outcome, reason_code,
+       target_type, target_uuid, work_id, work_kind, mode, outcome_family, outcome, reason_code,
        metadata, change_set
      ) VALUES (
-       $1, $2, $3, $4, $5::uuid, $6, $7, $8::uuid, $9::uuid, $10, $11::uuid, $12, $13, $14, $15, NULL,
-       $16::jsonb, $17::jsonb
+       $1, $2, $3, $4, $5::uuid, $6, $7, $8::uuid, $9::uuid, $10, $11::uuid, $12, $13, $14, $15, $16, NULL,
+       $17::jsonb, $18::jsonb
      )
      ON CONFLICT (idempotency_key) WHERE (outcome IN ('succeeded', 'replayed') AND idempotency_key IS NOT NULL) DO NOTHING`,
     [
@@ -80,6 +85,7 @@ export async function insertTerminalSuccessAudit(trx: PoolClient, input: Termina
       input.targetUuid,
       input.workId,
       input.workKind,
+      input.mode,
       input.outcomeFamily,
       input.outcome,
       JSON.stringify(input.metadata),
@@ -99,11 +105,11 @@ export async function persistTerminalNonSuccessAudit(pool: Pool, input: Terminal
       `INSERT INTO audit_event (
          idempotency_key, event_name, occurred_at, recorded_at,
          actor_user_uuid, actor_type, executor_service, organisation_uuid, property_uuid,
-         target_type, target_uuid, work_id, work_kind, outcome_family, outcome, reason_code,
+         target_type, target_uuid, work_id, work_kind, mode, outcome_family, outcome, reason_code,
          metadata, change_set
        ) VALUES (
-         NULL, $1, $2, $3, $4::uuid, $5, $6, $7::uuid, $8::uuid, $9, $10::uuid, $11, $12, $13, $14, $15,
-         $16::jsonb, NULL
+         NULL, $1, $2, $3, $4::uuid, $5, $6, $7::uuid, $8::uuid, $9, $10::uuid, $11, $12, $13, $14, $15, $16,
+         $17::jsonb, NULL
        )`,
       [
         input.eventName,
@@ -118,6 +124,7 @@ export async function persistTerminalNonSuccessAudit(pool: Pool, input: Terminal
         input.targetUuid,
         input.workId,
         input.workKind,
+        input.mode,
         input.outcomeFamily,
         input.outcome,
         input.reasonCode,

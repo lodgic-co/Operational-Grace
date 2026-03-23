@@ -647,6 +647,7 @@ export async function CreateReservationWithStays(
       targetUuid: reservationUuid,
       workId: auditContext.workId,
       workKind: 'request',
+      mode: environment,
       outcomeFamily: 'success',
       outcome: was_existing ? 'replayed' : 'succeeded',
       metadata: AuditPure.reservationAuditMetadata(checkIn, checkOut),
@@ -773,6 +774,7 @@ export async function CreateHold(
       targetUuid: holdUuid,
       workId: auditContext.workId,
       workKind: 'request',
+      mode: environment,
       outcomeFamily: 'success',
       outcome: was_existing ? 'replayed' : 'succeeded',
       metadata: AuditPure.holdAuditMetadata({

@@ -208,6 +208,12 @@ describe('CreateReservationWithStays — pre-check validation', () => {
         { accommodation_option_type_uuid: OPT_TYPE, start_date: '2027-01-06', end_date: '2027-01-06' },
       ], AUDIT_CTX),
     ).resolves.toBeDefined();
+
+    const auditInsert = trxQuery.mock.calls.find(
+      (c) => typeof c[0] === 'string' && String(c[0]).includes('INSERT INTO audit_event'),
+    );
+    expect(String(auditInsert?.[0])).toMatch(/\bmode\b/);
+    expect((auditInsert?.[1] as unknown[])[13]).toBe('live');
   });
 
   it('passes validation for an unallocated stay where accommodation_option_uuid is null', async () => {
@@ -226,10 +232,15 @@ describe('CreateReservationWithStays — pre-check validation', () => {
     const pool = { connect: vi.fn().mockResolvedValue(trx) } as unknown as Pool;
 
     await expect(
-      CreateReservationWithStays('live', pool, pool, 'res-uuid', PROP, 'Guest', '2027-01-04', '2027-01-07', [
+      CreateReservationWithStays('training', pool, pool, 'res-uuid', PROP, 'Guest', '2027-01-04', '2027-01-07', [
         { accommodation_option_type_uuid: OPT_TYPE, accommodation_option_uuid: null, start_date: '2027-01-04', end_date: '2027-01-06' },
       ], AUDIT_CTX),
     ).resolves.toBeDefined();
+
+    const auditInsert = trxQuery.mock.calls.find(
+      (c) => typeof c[0] === 'string' && String(c[0]).includes('INSERT INTO audit_event'),
+    );
+    expect((auditInsert?.[1] as unknown[])[13]).toBe('training');
   });
 });
 
