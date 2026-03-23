@@ -51,6 +51,8 @@ export interface TerminalNonSuccessAuditInput {
 
 /**
  * Idempotent success/replayed audit insert — duplicate success idempotency_key is a no-op.
+ * The ON CONFLICT `WHERE` must match `audit_event_idempotency_success_uidx` in
+ * `db/migrations/202603230001_audit_event_v2.cjs` or PostgreSQL cannot infer the partial unique index (42P10).
  */
 export async function insertTerminalSuccessAudit(trx: PoolClient, input: TerminalSuccessAuditInput): Promise<void> {
   await trx.query(
@@ -63,7 +65,7 @@ export async function insertTerminalSuccessAudit(trx: PoolClient, input: Termina
        $1, $2, $3, $4, $5::uuid, $6, $7, $8::uuid, $9::uuid, $10, $11::uuid, $12, $13, $14, $15, NULL,
        $16::jsonb, $17::jsonb
      )
-     ON CONFLICT (idempotency_key) WHERE (outcome IN ('succeeded', 'replayed')) DO NOTHING`,
+     ON CONFLICT (idempotency_key) WHERE (outcome IN ('succeeded', 'replayed') AND idempotency_key IS NOT NULL) DO NOTHING`,
     [
       input.idempotencyKey,
       input.eventName,
