@@ -1,0 +1,4 @@
+version: 1
+
+shared_data_models:
+  - audit_event

@@ -1,0 +1,12 @@
+required_endpoint_metadata:
+  - x-auth-mode
+  - x-tenant-scope
+  - x-public-surface
+  - x-error-envelope
+
+allowed_x_auth_mode_values:
+  - none
+  - bearer
+  - anonymous_or_bearer
+
+required_x_public_surface_value: false

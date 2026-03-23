@@ -1,0 +1,148 @@
+{
+  "services": {
+    "polite-intervention": {
+      "decision_procedures": [
+        "AssertPropertyBelongsToOrganisation",
+        "CreateHoldFacade",
+        "CreateReservationWithStaysFacade",
+        "GetOrganisationPropertyDetails",
+        "GetOrganisationRatePlans",
+        "WriteDistributionControlsFacade",
+        "WriteInventoryStateFacade",
+        "WriteOverbookingPolicyFacade",
+        "get-organisation-properties",
+        "get-property-reservations",
+        "get-user-preferences",
+        "resolve-actor",
+        "resolve-authority-instance",
+        "resolve-operational-grace-instance",
+        "resolve-organisation-scope"
+      ],
+      "data_models": []
+    },
+    "considered-response": {
+      "decision_procedures": [
+        "AssertAccommodationReferencesForProperty",
+        "AssertAccommodationReferencesRoute",
+        "AssertOrganisationPermission",
+        "AssertPropertyPermission",
+        "AssertServiceCapability",
+        "BuildOrganisationPropertiesResponse",
+        "BuildOrganisationRatePlansResponse",
+        "BuildPropertyDetailsResponse",
+        "FetchCrBundle",
+        "GetOrganisationPropertyDetailsRoute",
+        "ListOrganisationPropertiesRoute",
+        "ListOrganisationRatePlansRoute",
+        "ResolveAccommodationOptionTypeId",
+        "ResolveAccommodationUnitTypeId",
+        "ResolveAffectedAotsForAccommodationUnit",
+        "ResolveOrganisationId",
+        "ResolvePropertyId",
+        "SelectDualModeRoomPairs",
+        "SelectOrganisationProperties",
+        "SelectOrganisationProperty",
+        "SelectOrganisationRatePlans",
+        "SelectPropertyAccommodationOptionTypes",
+        "SelectPropertyAccommodationUnitTypes",
+        "SelectReachableAccommodationUnitTypesForAccommodationOptionType",
+        "SetDistributionControlsRoute",
+        "SetInventoryStateRoute",
+        "SetOverbookingPolicyRoute",
+        "WriteDistributionControls",
+        "WriteInventoryState",
+        "WriteOverbookingPolicy"
+      ],
+      "data_models": [
+        "accommodation_option_type_unit_types",
+        "accommodation_option_types",
+        "accommodation_option_units",
+        "accommodation_options",
+        "accommodation_unit_types",
+        "accommodation_units",
+        "audit_event",
+        "composite_accommodation_option_composition",
+        "composite_accommodation_option_type_requirements",
+        "contracted_parties",
+        "customer_segments",
+        "distribution_controls",
+        "dual_mode_accommodation_option_type_relationships",
+        "inventory_state",
+        "organisations",
+        "overbooking_policy",
+        "properties",
+        "rate_plan_accommodation_option_types",
+        "rate_plan_contracted_parties",
+        "rate_plan_customer_segments",
+        "rate_plan_properties",
+        "rate_plans"
+      ]
+    },
+    "measured-judgement": {
+      "decision_procedures": [
+        "assert-organisation-membership",
+        "check-permission",
+        "evaluate-permission-coverage",
+        "resolve-authority-instance-directory",
+        "resolve-operational-grace-instance-directory",
+        "resolve-organisation-scope-directory",
+        "resolve-user-identity",
+        "resolve-user-locale-context",
+        "select-service-capability-grants",
+        "validate-property-organisation-scope"
+      ],
+      "data_models": [
+        "authority_instances",
+        "organisation_authority_assignments",
+        "organisation_properties",
+        "property_authority_assignments",
+        "role_assignment_properties",
+        "role_assignments",
+        "role_permissions",
+        "roles",
+        "service_authority_grants",
+        "service_capabilities",
+        "user_identities",
+        "user_organisations",
+        "users"
+      ]
+    },
+    "operational-grace": {
+      "decision_procedures": [
+        "AssertPropertyPermissionOperationalGrace",
+        "AssertServiceCapabilityOperationalGrace",
+        "BuildPropertyReservationsResponse",
+        "CreateHold",
+        "CreateHoldRoute",
+        "CreateReservation",
+        "CreateReservationRoute",
+        "CreateReservationStay",
+        "CreateReservationWithStays",
+        "FetchOgBundle",
+        "ListPropertyReservationsRoute",
+        "ResolveEnvironmentSchema",
+        "SelectPropertyReservations"
+      ],
+      "data_models": [
+        "audit_event",
+        "holds",
+        "reservation_stays",
+        "reservations"
+      ]
+    },
+    "special-circumstances": {
+      "decision_procedures": [
+        "AssertPropertyPermissionSpecialCircumstances",
+        "AssertServiceCapabilitySpecialCircumstances",
+        "ComputeAvailabilitySlice",
+        "DeriveOgScope",
+        "ExecuteRebuild",
+        "ExecuteRebuildProcedure",
+        "MaterialiseProjection",
+        "PersistProjections",
+        "SelectInventoryProjections"
+      ],
+      "data_models": []
+    }
+  }
+}
