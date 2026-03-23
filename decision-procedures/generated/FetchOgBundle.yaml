@@ -1,3 +1,4 @@
+generated_by: cursor
 procedure_name: FetchOgBundle
 procedure_kind: domain
 procedure_taxonomy: read

@@ -1,3 +1,4 @@
+generated_by: cursor
 procedure_name: SelectPropertyReservations
 procedure_kind: domain
 identifier_mode: internal_only

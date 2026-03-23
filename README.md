@@ -37,7 +37,7 @@ cp .env.example .env
 Start a local PostgreSQL database, then run migrations:
 
 ```bash
-pnpm migrate
+pnpm db:migrate
 ```
 
 Start the service:
@@ -53,7 +53,7 @@ Migrations are managed by `node-pg-migrate` and must **not** run automatically a
 To run migrations against both live and training schemas:
 
 ```bash
-pnpm migrate
+pnpm db:migrate
 ```
 
 This requires `DATABASE_URL_DIRECT` (a direct, non-pooled connection string). Migrations run sequentially against `operational_grace` then `operational_grace_training`, each with its own migration tracking table.
@@ -61,8 +61,28 @@ This requires `DATABASE_URL_DIRECT` (a direct, non-pooled connection string). Mi
 To add a new migration:
 
 ```bash
-pnpm migrate:create <migration-name>
+pnpm db:create-migration <migration-name>
 ```
+
+## Observability
+
+OpenTelemetry is enabled when `OTEL_EXPORTER_OTLP_ENDPOINT` is set.
+
+Production startup from `package.json` is:
+
+```bash
+pnpm start
+```
+
+This runs `node --import ./dist/observability/otel-preload.js dist/index.js`, so the preload activates the OTel SDK before the app entrypoint loads.
+
+Default development startup from `package.json` is:
+
+```bash
+pnpm dev
+```
+
+This runs `tsx watch src/index.ts` and does **not** preload `src/observability/otel-preload.ts`.
 
 ## Environment variables
 
@@ -86,14 +106,10 @@ See `.env.example` for the full list. Required variables at startup:
 Unit tests (no database required):
 
 ```bash
-pnpm test:unit
+pnpm test
 ```
 
-Integration tests (requires a running PostgreSQL database with migrations applied):
-
-```bash
-pnpm test:integration
-```
+The repository currently exposes a single `pnpm test` command rather than separate `test:unit` and `test:integration` scripts.
 
 ## Health endpoints
 

@@ -1,3 +1,4 @@
+generated_by: cursor
 procedure_name: ListPropertyReservationsRoute
 procedure_kind: route_orchestration
 identifier_mode: boundary_resolving

@@ -18,7 +18,8 @@
     "lint:fix": "eslint src/ tests/ --fix",
     "openapi:check": "redocly lint openapi/openapi.yaml --config openapi/.redocly.yaml",
     "format": "prettier --write \"src/**/*.ts\" \"tests/**/*.ts\"",
-    "ci": "pnpm typecheck && pnpm lint && pnpm openapi:check && pnpm db:migrate && pnpm test && pnpm build"
+    "ci": "node ../../scripts/validate-governance-entrypoint.mjs && node ../../scripts/validate-generated-artifact-ownership.mjs && pnpm typecheck && pnpm lint && pnpm openapi:check && pnpm verify:generated && pnpm db:migrate && pnpm test && pnpm build",
+    "verify:generated": "node scripts/verify-generated-artifacts.cjs"
   },
   "dependencies": {
     "@opentelemetry/api": "^1.9.0",

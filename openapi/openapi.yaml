@@ -1,19 +1,18 @@
-openapi: "3.0.3"
+openapi: 3.0.3
+x-generated-by: cursor
 info:
   title: Operational Grace API
-  version: "1.0.0"
+  version: 1.0.0
   description: >
     Internal domain service API. Owns the reservations and guests domains.
     Exposes property-scoped reservation listing with live/training environment
     isolation via dual database schemas. Not publicly accessible — called only
-    by polite-intervention. Permission enforcement delegated to measured-judgement.
-
+    by polite-intervention. Permission enforcement delegated to
+    measured-judgement.
 servers:
   - url: /
-
 security:
   - BearerAuth: []
-
 paths:
   /internal/ping:
     get:
@@ -23,7 +22,8 @@ paths:
       x-public-surface: false
       x-error-envelope: not_applicable
       summary: Internal connectivity ping
-      tags: [Internal]
+      tags:
+        - Internal
       security: []
       responses:
         "200":
@@ -32,11 +32,11 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [ok]
+                required:
+                  - ok
                 properties:
                   ok:
                     type: boolean
-
   /health/live:
     get:
       operationId: healthLive
@@ -45,7 +45,8 @@ paths:
       x-public-surface: false
       x-error-envelope: not_applicable
       summary: Liveness probe
-      tags: [Health]
+      tags:
+        - Health
       security: []
       responses:
         "200":
@@ -54,12 +55,13 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [status]
+                required:
+                  - status
                 properties:
                   status:
                     type: string
-                    enum: [ok]
-
+                    enum:
+                      - ok
   /health/ready:
     get:
       operationId: healthReady
@@ -71,7 +73,8 @@ paths:
       description: >
         Returns ready when both live and training database schema connections
         are healthy. Returns 503 if either pool is unreachable.
-      tags: [Health]
+      tags:
+        - Health
       security: []
       responses:
         "200":
@@ -80,23 +83,26 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [status]
+                required:
+                  - status
                 properties:
                   status:
                     type: string
-                    enum: [ready]
+                    enum:
+                      - ready
         "503":
           description: Service not ready
           content:
             application/json:
               schema:
                 type: object
-                required: [status]
+                required:
+                  - status
                 properties:
                   status:
                     type: string
-                    enum: [not_ready]
-
+                    enum:
+                      - not_ready
   /live/properties/{property_uuid}/reservations:
     get:
       operationId: listLivePropertyReservations
@@ -110,7 +116,8 @@ paths:
         from the live (operational) schema. Actor must hold reservations.view
         for the property. All denial conditions (property not found, out of
         scope, no permission) return 404 to prevent information leakage.
-      tags: [Reservations]
+      tags:
+        - Reservations
       parameters:
         - $ref: "#/components/parameters/PropertyUuid"
         - $ref: "#/components/parameters/Cursor"
@@ -124,15 +131,15 @@ paths:
         "200":
           $ref: "#/components/responses/ReservationListResponse"
         "400":
-          $ref: "components/errors.yaml#/components/responses/BadRequest"
+          $ref: components/errors.yaml#/components/responses/BadRequest
         "401":
-          $ref: "components/errors.yaml#/components/responses/Unauthenticated"
+          $ref: components/errors.yaml#/components/responses/Unauthenticated
         "404":
-          $ref: "components/errors.yaml#/components/responses/NotFound"
-        "502":
-          $ref: "components/errors.yaml#/components/responses/BadGateway"
+          $ref: components/errors.yaml#/components/responses/NotFound
         "500":
-          $ref: "components/errors.yaml#/components/responses/InternalError"
+          $ref: components/errors.yaml#/components/responses/InternalError
+        "502":
+          $ref: components/errors.yaml#/components/responses/BadGateway
     post:
       operationId: createLiveReservation
       x-auth-mode: bearer
@@ -145,7 +152,8 @@ paths:
         reservation_uuid is client-supplied for idempotence — repeat requests
         with the same reservation_uuid are safe. Requires reservations.create
         permission for the property.
-      tags: [Reservations]
+      tags:
+        - Reservations
       parameters:
         - $ref: "#/components/parameters/PropertyUuid"
         - $ref: "#/components/parameters/ActorType"
@@ -163,14 +171,13 @@ paths:
         "201":
           $ref: "#/components/responses/ReservationCreatedResponse"
         "400":
-          $ref: "components/errors.yaml#/components/responses/BadRequest"
+          $ref: components/errors.yaml#/components/responses/BadRequest
         "401":
-          $ref: "components/errors.yaml#/components/responses/Unauthenticated"
+          $ref: components/errors.yaml#/components/responses/Unauthenticated
         "404":
-          $ref: "components/errors.yaml#/components/responses/NotFound"
+          $ref: components/errors.yaml#/components/responses/NotFound
         "500":
-          $ref: "components/errors.yaml#/components/responses/InternalError"
-
+          $ref: components/errors.yaml#/components/responses/InternalError
   /training/properties/{property_uuid}/reservations:
     get:
       operationId: listTrainingPropertyReservations
@@ -181,9 +188,10 @@ paths:
       summary: List training reservations for a property
       description: >
         Returns a paginated list of reservation UUIDs for the specified property
-        from the training schema. Identical behaviour to the live endpoint;
-        data is fully isolated between schemas.
-      tags: [Reservations]
+        from the training schema. Identical behaviour to the live endpoint; data
+        is fully isolated between schemas.
+      tags:
+        - Reservations
       parameters:
         - $ref: "#/components/parameters/PropertyUuid"
         - $ref: "#/components/parameters/Cursor"
@@ -197,15 +205,15 @@ paths:
         "200":
           $ref: "#/components/responses/ReservationListResponse"
         "400":
-          $ref: "components/errors.yaml#/components/responses/BadRequest"
+          $ref: components/errors.yaml#/components/responses/BadRequest
         "401":
-          $ref: "components/errors.yaml#/components/responses/Unauthenticated"
+          $ref: components/errors.yaml#/components/responses/Unauthenticated
         "404":
-          $ref: "components/errors.yaml#/components/responses/NotFound"
-        "502":
-          $ref: "components/errors.yaml#/components/responses/BadGateway"
+          $ref: components/errors.yaml#/components/responses/NotFound
         "500":
-          $ref: "components/errors.yaml#/components/responses/InternalError"
+          $ref: components/errors.yaml#/components/responses/InternalError
+        "502":
+          $ref: components/errors.yaml#/components/responses/BadGateway
     post:
       operationId: createTrainingReservation
       x-auth-mode: bearer
@@ -215,9 +223,10 @@ paths:
       summary: Create a reservation in the training environment
       description: >
         Creates a reservation with one or more stays in the training schema.
-        Identical behaviour to the live endpoint; data is fully isolated
-        between schemas.
-      tags: [Reservations]
+        Identical behaviour to the live endpoint; data is fully isolated between
+        schemas.
+      tags:
+        - Reservations
       parameters:
         - $ref: "#/components/parameters/PropertyUuid"
         - $ref: "#/components/parameters/ActorType"
@@ -235,14 +244,13 @@ paths:
         "201":
           $ref: "#/components/responses/ReservationCreatedResponse"
         "400":
-          $ref: "components/errors.yaml#/components/responses/BadRequest"
+          $ref: components/errors.yaml#/components/responses/BadRequest
         "401":
-          $ref: "components/errors.yaml#/components/responses/Unauthenticated"
+          $ref: components/errors.yaml#/components/responses/Unauthenticated
         "404":
-          $ref: "components/errors.yaml#/components/responses/NotFound"
+          $ref: components/errors.yaml#/components/responses/NotFound
         "500":
-          $ref: "components/errors.yaml#/components/responses/InternalError"
-
+          $ref: components/errors.yaml#/components/responses/InternalError
   /live/properties/{property_uuid}/holds:
     post:
       operationId: createLiveHold
@@ -253,9 +261,11 @@ paths:
       summary: Create a hold in the live environment
       description: >
         Creates a time-bound inventory hold in the live schema. The hold_uuid is
-        client-supplied for idempotence — repeat requests with the same hold_uuid
-        are safe. Requires reservations.create permission for the property.
-      tags: [Holds]
+        client-supplied for idempotence — repeat requests with the same
+        hold_uuid are safe. Requires reservations.create permission for the
+        property.
+      tags:
+        - Holds
       parameters:
         - $ref: "#/components/parameters/PropertyUuid"
         - $ref: "#/components/parameters/ActorType"
@@ -273,14 +283,13 @@ paths:
         "201":
           $ref: "#/components/responses/HoldCreatedResponse"
         "400":
-          $ref: "components/errors.yaml#/components/responses/BadRequest"
+          $ref: components/errors.yaml#/components/responses/BadRequest
         "401":
-          $ref: "components/errors.yaml#/components/responses/Unauthenticated"
+          $ref: components/errors.yaml#/components/responses/Unauthenticated
         "404":
-          $ref: "components/errors.yaml#/components/responses/NotFound"
+          $ref: components/errors.yaml#/components/responses/NotFound
         "500":
-          $ref: "components/errors.yaml#/components/responses/InternalError"
-
+          $ref: components/errors.yaml#/components/responses/InternalError
   /training/properties/{property_uuid}/holds:
     post:
       operationId: createTrainingHold
@@ -292,7 +301,8 @@ paths:
       description: >
         Creates a time-bound inventory hold in the training schema. Identical
         behaviour to the live endpoint; data is fully isolated between schemas.
-      tags: [Holds]
+      tags:
+        - Holds
       parameters:
         - $ref: "#/components/parameters/PropertyUuid"
         - $ref: "#/components/parameters/ActorType"
@@ -310,29 +320,29 @@ paths:
         "201":
           $ref: "#/components/responses/HoldCreatedResponse"
         "400":
-          $ref: "components/errors.yaml#/components/responses/BadRequest"
+          $ref: components/errors.yaml#/components/responses/BadRequest
         "401":
-          $ref: "components/errors.yaml#/components/responses/Unauthenticated"
+          $ref: components/errors.yaml#/components/responses/Unauthenticated
         "404":
-          $ref: "components/errors.yaml#/components/responses/NotFound"
+          $ref: components/errors.yaml#/components/responses/NotFound
         "500":
-          $ref: "components/errors.yaml#/components/responses/InternalError"
-
+          $ref: components/errors.yaml#/components/responses/InternalError
   /bundles/occupancy:
     post:
       operationId: fetchOccupancyBundle
-      x-auth-mode: service_capability
+      x-auth-mode: bearer
       x-capability: inventory.occupancy.bundle.read
       x-tenant-scope: property
       x-public-surface: false
       x-error-envelope: true
       summary: Fetch OG occupancy bundle for a rebuild scope
       description: >
-        Assembles and returns the full OgBundle for the given property, environment,
-        and date range. Called by special-circumstances at rebuild time.
-        Protected by service capability inventory.occupancy.bundle.read.
+        Assembles and returns the full OgBundle for the given property,
+        environment, and date range. Called by special-circumstances at rebuild
+        time. Protected by service capability inventory.occupancy.bundle.read.
         No delegated actor context is processed.
-      tags: [Bundles]
+      tags:
+        - Bundles
       requestBody:
         required: true
         content:
@@ -358,7 +368,9 @@ paths:
                   format: date
                 environment:
                   type: string
-                  enum: [live, training]
+                  enum:
+                    - live
+                    - training
                 expanded_aot_uuids:
                   type: array
                   items:
@@ -397,7 +409,13 @@ paths:
                     type: array
                     items:
                       type: object
-                      required: [accommodation_option_type_uuid, inventory_night, room_stay_count, active_hold_count, room_stay_adults, active_hold_adults]
+                      required:
+                        - accommodation_option_type_uuid
+                        - inventory_night
+                        - room_stay_count
+                        - active_hold_count
+                        - room_stay_adults
+                        - active_hold_adults
                       properties:
                         accommodation_option_type_uuid:
                           type: string
@@ -417,7 +435,12 @@ paths:
                     type: array
                     items:
                       type: object
-                      required: [accommodation_option_uuid, accommodation_option_type_uuid, inventory_night, has_room_stay, has_active_hold]
+                      required:
+                        - accommodation_option_uuid
+                        - accommodation_option_type_uuid
+                        - inventory_night
+                        - has_room_stay
+                        - has_active_hold
                       properties:
                         accommodation_option_uuid:
                           type: string
@@ -436,7 +459,13 @@ paths:
                     type: array
                     items:
                       type: object
-                      required: [accommodation_option_type_uuid, inventory_night, unallocated_room_stay_count, unallocated_hold_count, unallocated_room_stay_adults, unallocated_hold_adults]
+                      required:
+                        - accommodation_option_type_uuid
+                        - inventory_night
+                        - unallocated_room_stay_count
+                        - unallocated_hold_count
+                        - unallocated_room_stay_adults
+                        - unallocated_hold_adults
                       properties:
                         accommodation_option_type_uuid:
                           type: string
@@ -456,7 +485,9 @@ paths:
                     type: array
                     items:
                       type: object
-                      required: [inventory_night, property_has_any_occupancy]
+                      required:
+                        - inventory_night
+                        - property_has_any_occupancy
                       properties:
                         inventory_night:
                           type: string
@@ -464,19 +495,17 @@ paths:
                         property_has_any_occupancy:
                           type: boolean
         "400":
-          $ref: "components/errors.yaml#/components/responses/BadRequest"
+          $ref: components/errors.yaml#/components/responses/BadRequest
         "401":
-          $ref: "components/errors.yaml#/components/responses/Unauthenticated"
+          $ref: components/errors.yaml#/components/responses/Unauthenticated
         "500":
-          $ref: "components/errors.yaml#/components/responses/InternalError"
-
+          $ref: components/errors.yaml#/components/responses/InternalError
 components:
   securitySchemes:
     BearerAuth:
       type: http
       scheme: bearer
       bearerFormat: JWT
-
   parameters:
     PropertyUuid:
       name: property_uuid
@@ -486,7 +515,6 @@ components:
         type: string
         format: uuid
       description: UUID of the property to list reservations for
-
     Cursor:
       name: cursor
       in: query
@@ -494,7 +522,6 @@ components:
       schema:
         type: string
       description: Opaque HMAC-signed pagination cursor from a previous response
-
     Limit:
       name: limit
       in: query
@@ -505,16 +532,15 @@ components:
         maximum: 200
         default: 50
       description: Maximum number of results to return
-
     ActorType:
       name: X-Actor-Type
       in: header
       required: true
       schema:
         type: string
-        enum: [user]
+        enum:
+          - user
       description: Delegated actor type forwarded by polite-intervention
-
     ActorUserUuid:
       name: X-Actor-User-Uuid
       in: header
@@ -523,7 +549,6 @@ components:
         type: string
         format: uuid
       description: Delegated actor user UUID forwarded by polite-intervention
-
     OrganisationUuid:
       name: X-Organisation-Uuid
       in: header
@@ -532,7 +557,6 @@ components:
         type: string
         format: uuid
       description: Organisation UUID forwarded by polite-intervention
-
     PropertyUuidHeader:
       name: X-Property-Uuid
       in: header
@@ -540,8 +564,8 @@ components:
       schema:
         type: string
         format: uuid
-      description: Property UUID forwarded by polite-intervention (canonical delegated context header)
-
+      description: Property UUID forwarded by polite-intervention (canonical delegated
+        context header)
     RequestId:
       name: X-Request-Id
       in: header
@@ -550,19 +574,24 @@ components:
         type: string
       description: >
         Correlation ID. Propagated as Audit v2 work_id (work_kind request) for
-        terminal audit rows on reservation and hold mutations; echoed on responses
-        when supplied. When omitted, the service derives work_id from trace context
-        or a new UUID.
-
+        terminal audit rows on reservation and hold mutations; echoed on
+        responses when supplied. When omitted, the service derives work_id from
+        trace context or a new UUID.
   schemas:
     CreateReservationBody:
       type: object
-      required: [reservation_uuid, guest_name, check_in, check_out, stays]
+      required:
+        - reservation_uuid
+        - guest_name
+        - check_in
+        - check_out
+        - stays
       properties:
         reservation_uuid:
           type: string
           format: uuid
-          description: Client-supplied UUID for idempotence — safe to retry with the same value.
+          description: Client-supplied UUID for idempotence — safe to retry with the same
+            value.
         guest_name:
           type: string
           minLength: 1
@@ -570,25 +599,28 @@ components:
           type: string
           format: date
           description: >
-            Reservation arrival date. Start of the overall booking envelope. Inclusive.
-            Must be strictly before check_out.
+            Reservation arrival date. Start of the overall booking envelope.
+            Inclusive. Must be strictly before check_out.
         check_out:
           type: string
           format: date
           description: >
-            Reservation departure date. End of the overall booking envelope. Exclusive.
-            Must be strictly after check_in.
+            Reservation departure date. End of the overall booking envelope.
+            Exclusive. Must be strictly after check_in.
         stays:
           type: array
           minItems: 1
           description: >
-            Allocation segments for this reservation. Each stay records the nights
-            assigned to a particular accommodation option type. Stays do not need to
-            be contiguous but all stay ranges must lie within the reservation
-            check_in/check_out envelope.
+            Allocation segments for this reservation. Each stay records the
+            nights assigned to a particular accommodation option type. Stays do
+            not need to be contiguous but all stay ranges must lie within the
+            reservation check_in/check_out envelope.
           items:
             type: object
-            required: [accommodation_option_type_uuid, start_date, end_date]
+            required:
+              - accommodation_option_type_uuid
+              - start_date
+              - end_date
             properties:
               accommodation_option_type_uuid:
                 type: string
@@ -598,31 +630,38 @@ components:
                 format: uuid
                 nullable: true
                 description: >
-                  Optional allocation to a concrete sellable option. Null means the
-                  stay is unallocated.
+                  Optional allocation to a concrete sellable option. Null means
+                  the stay is unallocated.
               start_date:
                 type: string
                 format: date
-                description: Start of this stay segment. Inclusive. Must be >= reservation check_in.
+                description: Start of this stay segment. Inclusive. Must be >= reservation
+                  check_in.
               end_date:
                 type: string
                 format: date
-                description: End of this stay segment. Exclusive. Must be <= reservation check_out.
+                description: End of this stay segment. Exclusive. Must be <= reservation
+                  check_out.
               adult_count:
                 type: integer
                 nullable: true
                 description: >
-                  Optional number of adults assigned to this stay segment. Null means
-                  no adult count has been specified.
-
+                  Optional number of adults assigned to this stay segment. Null
+                  means no adult count has been specified.
     CreateHoldBody:
       type: object
-      required: [hold_uuid, expires_at, accommodation_option_type_uuid, check_in, check_out]
+      required:
+        - hold_uuid
+        - expires_at
+        - accommodation_option_type_uuid
+        - check_in
+        - check_out
       properties:
         hold_uuid:
           type: string
           format: uuid
-          description: Client-supplied UUID for idempotence — safe to retry with the same value.
+          description: Client-supplied UUID for idempotence — safe to retry with the same
+            value.
         expires_at:
           type: string
           format: date-time
@@ -639,7 +678,6 @@ components:
         check_out:
           type: string
           format: date
-
   responses:
     ReservationListResponse:
       description: Paginated list of reservation UUIDs
@@ -647,13 +685,16 @@ components:
         application/json:
           schema:
             type: object
-            required: [reservations, next_cursor]
+            required:
+              - reservations
+              - next_cursor
             properties:
               reservations:
                 type: array
                 items:
                   type: object
-                  required: [reservation_uuid]
+                  required:
+                    - reservation_uuid
                   properties:
                     reservation_uuid:
                       type: string
@@ -662,21 +703,29 @@ components:
                 type: string
                 nullable: true
                 description: Opaque cursor for the next page; null if no further results
-
     ReservationCreatedResponse:
       description: Reservation created
       content:
         application/json:
           schema:
             type: object
-            required: [reservation, stays, was_existing]
+            required:
+              - reservation
+              - stays
+              - was_existing
             properties:
               was_existing:
                 type: boolean
                 description: True if the reservation already existed (idempotent replay).
               reservation:
                 type: object
-                required: [uuid, property_uuid, guest_name, check_in, check_out, created_at]
+                required:
+                  - uuid
+                  - property_uuid
+                  - guest_name
+                  - check_in
+                  - check_out
+                  - created_at
                 properties:
                   uuid:
                     type: string
@@ -699,7 +748,12 @@ components:
                 type: array
                 items:
                   type: object
-                  required: [uuid, accommodation_option_type_uuid, start_date, end_date, created_at]
+                  required:
+                    - uuid
+                    - accommodation_option_type_uuid
+                    - start_date
+                    - end_date
+                    - created_at
                   properties:
                     uuid:
                       type: string
@@ -724,18 +778,24 @@ components:
                     created_at:
                       type: string
                       format: date-time
-
     HoldCreatedResponse:
       description: Hold created
       content:
         application/json:
           schema:
             type: object
-            required: [hold]
+            required:
+              - hold
             properties:
               hold:
                 type: object
-                required: [uuid, property_uuid, accommodation_option_type_uuid, check_in, check_out, expires_at]
+                required:
+                  - uuid
+                  - property_uuid
+                  - accommodation_option_type_uuid
+                  - check_in
+                  - check_out
+                  - expires_at
                 properties:
                   uuid:
                     type: string

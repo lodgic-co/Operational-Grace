@@ -1,3 +1,4 @@
+generated_by: cursor
 procedure_name: CreateHold
 procedure_kind: domain
 identifier_mode: boundary_resolving
