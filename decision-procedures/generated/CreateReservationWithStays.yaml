@@ -5,12 +5,13 @@ identifier_mode: boundary_resolving
 owning_service: operational-grace
 purpose: >
   Orchestrating create procedure that owns the full transaction boundary
-  for a reservation and all its stays. Calls CreateReservation and
-  CreateReservationStay as sub-procedures within a single transaction.
+  for a reservation and all its stays. Calls private reservation and stay
+  insert helpers within a single transaction.
 
   Idempotence: if was_existing=true (reservation UUID already existed),
   the existing reservation and its stays are returned without inserting
-  new stay rows. BEGIN → CreateReservation → N × CreateReservationStay
+  new stay rows. BEGIN → private reservation insert helper → N × private
+  stay insert helper
   (when not existing) → INSERT audit_event (Audit v2 terminal success —
   outcome succeeded or replayed, partial unique index on idempotency_key) →
   COMMIT. Any failure → ROLLBACK. Partial writes are not possible.
@@ -43,9 +44,9 @@ inputs:
   - auditContext (AuditMutationContext — actor_user_uuid, organisation_uuid,
     property_uuid, work_id; work_kind request on success path)
 outputs:
-  - CreateReservationResult (was_existing: boolean, reservation: { uuid,
-    property_uuid, guest_name, check_in, check_out, created_at },
-    stays: StayRow[])
+  - CreateReservationResult containing was_existing, the public reservation
+    fields (uuid, property_uuid, guest_name, check_in, check_out, created_at),
+    and stays as StayRow[].
 preconditions:
   - stays must be non-empty (enforced by pre-check; InvalidRequest if empty).
   - checkOut must be strictly greater than checkIn (reservation envelope).
@@ -56,18 +57,18 @@ preconditions:
 decision_logic:
   - Validate stays.length >= 1; throw InvalidRequest if empty.
   - Validate checkOut > checkIn; throw InvalidRequest if violated.
-  - For each stay: validate end_date > start_date; throw InvalidRequest if
+  - For each stay, validate end_date > start_date; throw InvalidRequest if
     violated.
-  - For each stay: validate start_date >= checkIn and end_date <= checkOut;
+  - For each stay, validate start_date >= checkIn and end_date <= checkOut;
     throw InvalidRequest if any stay falls outside the reservation envelope.
   - Call ResolveEnvironmentSchema to obtain the environment-scoped pool.
   - Acquire a connection and BEGIN.
-  - Call CreateReservation(trx, reservationUuid, propertyUuid, guestName,
-    checkIn, checkOut).
-  - If was_existing=true: SELECT existing stays from reservation_stays by
+  - Call a private reservation insert helper to perform INSERT reservations
+    ON CONFLICT (uuid) DO NOTHING, then SELECT the row and compute was_existing.
+  - If was_existing=true, SELECT existing stays from reservation_stays by
     reservation_id; skip stay inserts.
-  - If was_existing=false: call CreateReservationStay once per stay input
-    passing start_date, end_date, and adult_count.
+  - If was_existing=false, call a private stay insert helper once per stay
+    input, passing start_date, end_date, and adult_count.
   - INSERT audit_event for event_name reservation_create (ON CONFLICT (idempotency_key)
     WHERE outcome IN ('succeeded', 'replayed') DO NOTHING) after all domain writes
     and before COMMIT.
@@ -75,9 +76,10 @@ decision_logic:
   - On any error: ROLLBACK and re-throw.
 relationship_traversal:
   - ResolveEnvironmentSchema — selects pool by environment literal. No DB.
-  - CreateReservation — INSERT reservations ON CONFLICT (uuid) DO NOTHING,
-    then SELECT. Constraining identifier: reservationUuid (UNIQUE).
-  - CreateReservationStay — INSERT reservation_stays N times within the
+  - Private reservation insert helper — INSERT reservations ON CONFLICT
+    (uuid) DO NOTHING, then SELECT. Constraining identifier is reservationUuid
+    (UNIQUE).
+  - Private stay insert helper — INSERT reservation_stays N times within the
     same transaction. reservation_id FK links stays to the reservation.
   - Idempotent replay — SELECT reservation_stays WHERE reservation_id = id
     to return existing stays without re-inserting.
@@ -88,7 +90,7 @@ scoping_constraints:
     TypeScript literal — not from any request input.
 set_semantics:
   - Atomically creates one reservation and N stays in a single transaction.
-  - Idempotent: repeated calls with the same reservationUuid return the
+  - Repeated calls with the same reservationUuid are idempotent and return the
     same reservation and its original stays.
 error_behaviour:
   - invalid_request (400) — empty stays array.
@@ -98,8 +100,8 @@ error_behaviour:
   - invalid_request (400) — any stay end_date > reservation checkOut.
   - Database errors → ROLLBACK and re-throw as internal_error.
 data_dependencies:
-  - operational_grace.reservations (via CreateReservation)
-  - operational_grace.reservation_stays (via CreateReservationStay)
+  - operational_grace.reservations (via private reservation insert helper)
+  - operational_grace.reservation_stays (via private stay insert helper)
   - operational_grace.audit_event (insert — idempotent per idempotency_key on
     success outcomes only via partial unique index)
 side_effects: >
@@ -111,7 +113,7 @@ side_effects: >
 invariants:
   - A reservation and all its stays are created atomically. Partial writes
     are not possible.
-  - Client-supplied UUID idempotence: repeated calls with the same
+  - Client-supplied UUID idempotence means repeated calls with the same
     reservationUuid always return the same reservation.
   - reservation.check_in/check_out forms the booking envelope; all stay
     start_date/end_date ranges must lie within this envelope.

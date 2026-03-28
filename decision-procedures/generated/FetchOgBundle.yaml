@@ -7,7 +7,8 @@ purpose: >
   Assembles and returns the full OgBundle for a rebuild scope. Called by SC
   via POST /bundles/occupancy (capability: inventory.occupancy.bundle.read).
   Queries the appropriate environment schema (live/training) for occupancy data
-  derived from reservation_stays and holds.
+  derived from reservation_stays and holds. Bundle-only query and merge slices
+  remain private helpers beneath this single exported entrypoint.
 source_files:
   - src/domain/procedures.ts
   - src/routes/bundles.ts
@@ -27,10 +28,15 @@ outputs:
   - OgBundle (see OgBundle interface in src/domain/procedures.ts)
 decision_logic:
   - If expandedAotUuids is empty, return empty bundle.
-  - Query occupancy_by_aot_and_date: separate stays + holds queries, merge in application.
-  - If compositeAndDualModeAotUuids non-empty: query og_state_by_ao.
-  - If dualModeAotUuids non-empty: query unallocated_by_aot_and_date (separate stays + holds, merge).
-  - If hasExclusiveUseAots: query property_has_any_occupancy_by_date via EXISTS (any stay or active hold on the property night).
+  - Use a private occupancy slice helper to query occupancy_by_aot_and_date
+    with separate stays + holds queries, then merge in application.
+  - Use a private og_state_by_ao slice helper when
+    compositeAndDualModeAotUuids is non-empty.
+  - Use a private unallocated slice helper when dualModeAotUuids is non-empty;
+    query stays + holds separately, then merge in application.
+  - Use a private exclusive_use slice helper when hasExclusiveUseAots is true;
+    query property_has_any_occupancy_by_date via EXISTS (any stay or active
+    hold on the property night).
   - Return assembled OgBundle.
 error_behaviour:
   - invalid_request (400): missing required inputs.

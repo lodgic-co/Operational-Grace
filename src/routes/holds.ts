@@ -4,7 +4,6 @@ import { z } from 'zod';
 import { parseDelegatedActor } from '../auth/actor.js';
 import { InvalidRequest } from '../errors/index.js';
 import {
-  ResolveEnvironmentSchema,
   AssertPropertyPermission,
   CreateHold,
 } from '../domain/procedures.js';
