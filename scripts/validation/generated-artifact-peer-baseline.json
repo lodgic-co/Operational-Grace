@@ -39,7 +39,6 @@
         "ResolveAffectedAotsForAccommodationUnit",
         "ResolveOrganisationId",
         "ResolvePropertyId",
-        "SelectDualModeRoomPairs",
         "SelectOrganisationProperties",
         "SelectOrganisationProperty",
         "SelectOrganisationRatePlans",
