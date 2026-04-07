@@ -8,6 +8,12 @@ const TRAINING_SCHEMA = 'operational_grace_training';
 
 const sslConfig = process.env['PG_SSL'] === 'false' ? {} : { ssl: { rejectUnauthorized: false } };
 
+function registerPoolErrorHandler(pool: pg.Pool, poolName: string): void {
+  pool.on('error', (err) => {
+    console.error(`[operational-grace] Postgres ${poolName} pool error`, err);
+  });
+}
+
 const poolBase = {
   connectionString: config.DATABASE_URL,
   ...sslConfig,
@@ -18,6 +24,9 @@ const poolBase = {
 
 export const livePool = new Pool(poolBase);
 export const trainingPool = new Pool(poolBase);
+
+registerPoolErrorHandler(livePool, 'live');
+registerPoolErrorHandler(trainingPool, 'training');
 
 livePool.on('connect', (client) => {
   client.query(`SET search_path TO ${LIVE_SCHEMA}`).catch((err: unknown) => {
