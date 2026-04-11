@@ -22,7 +22,7 @@
  * These unit tests catch the regression directly at the query layer.
  */
 
-import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import pg from 'pg';
 import { FetchOgBundle } from '../../src/domain/procedures.js';
 

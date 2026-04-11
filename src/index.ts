@@ -24,7 +24,6 @@ const start = async (): Promise<void> => {
     setReady(true);
     app.log.info(`Server listening on port ${config.PORT}`);
   } catch (err) {
-    // eslint-disable-next-line no-console
     console.error('Startup failed', err);
     process.exit(1);
   }
